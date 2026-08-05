@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prime Sales CRM</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --ink:#14251C;--paper:#F5F4EF;--card:#fff;
+  --green:#1E6B45;--green-dk:#155033;--green-lt:#E3EFE8;
+  --steel:#4A564F;--line:#DCDCD2;--mut:#7A847E;
+  --amber:#D98E1B;--amber-lt:#FBF1DD;
+  --red:#B3402E;--red-lt:#F9E7E3;
+  --blue:#2E5FB3;--blue-lt:#E6EDFA;--r:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--paper);color:var(--ink);font-size:14px;line-height:1.45}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--green);border-color:var(--green)}
+textarea{resize:vertical;min-height:70px}
+label{font-size:11px;font-weight:600;color:var(--steel);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px}
+a{color:var(--blue)}
+.btn{background:var(--green);color:#fff;border:none;border-radius:7px;padding:9px 14px;font-size:13px;font-weight:600;display:inline-block;cursor:pointer}
+.btn:hover{background:var(--green-dk)}
+.btn.sec{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.btn.sec:hover{border-color:var(--steel)}
+.btn.warn{background:var(--red);color:#fff}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.full{grid-column:1/-1}
+.sub{color:var(--mut);font-size:12px}
+.chip{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.chip.g{background:var(--green-lt);color:var(--green-dk)}
+.chip.a{background:var(--amber-lt);color:#8A5A0E}
+.chip.r{background:var(--red-lt);color:var(--red)}
+.chip.b{background:var(--blue-lt);color:var(--blue)}
+.chip.n{background:#EEEEE7;color:var(--steel)}
+.notice{background:var(--amber-lt);border:1px solid #EAD2A4;border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:12px}
+.empty{color:var(--mut);font-size:13px;padding:18px;text-align:center}
+header{background:var(--ink);color:#fff;position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:20px;padding:0 20px;flex-wrap:wrap}
+.brand{padding:14px 0}
+.brand h1{font-weight:800;font-size:16px;letter-spacing:.02em}
+.brand p{font-size:10px;color:#9DB5A8;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+nav{display:flex;gap:2px;flex-wrap:wrap}
+nav button{background:none;border:none;color:#9DB5A8;padding:16px 12px;font-size:13px;font-weight:600;border-bottom:3px solid transparent;cursor:pointer}
+nav button:hover{color:#fff}
+nav button.on{color:#fff;border-bottom-color:var(--amber)}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:12px;padding:10px 0}
+main{max-width:1400px;margin:0 auto;padding:22px 20px 80px}
+.section-title{font-size:18px;font-weight:800;margin-bottom:14px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);padding:8px;border-bottom:2px solid var(--line)}
+td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:hover td{background:#FAFAF6}
+.overlay{position:fixed;inset:0;background:rgba(20,37,28,.55);z-index:100;display:flex;justify-content:center;align-items:flex-start;padding:30px 14px;overflow:auto}
+.modal{background:#fff;border-radius:12px;max-width:820px;width:100%;padding:24px;position:relative;max-height:90vh;overflow-y:auto}
+.modal-close{position:absolute;top:12px;right:14px;background:none;border:none;font-size:22px;color:var(--mut);cursor:pointer}
+.modal-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.modal-tabs button{background:none;border:none;padding:6px 12px;font-size:13px;font-weight:600;color:var(--mut);border-bottom:2px solid transparent;cursor:pointer}
+.modal-tabs button.on{color:var(--green);border-bottom-color:var(--green)}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.kpi.hot{border-left:4px solid var(--amber)}
+.kpi .v{font-size:26px;font-weight:800;margin:2px 0}
+.kpi .l{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--steel);font-weight:600}
+.kpi .d{font-size:12px;color:var(--mut)}
+.kanban-ss{display:grid;grid-template-columns:repeat(5,minmax(200px,1fr));gap:12px;overflow-x:auto;padding-bottom:8px}
+.kanban-sa{display:grid;grid-template-columns:repeat(7,minmax(210px,1fr));gap:12px;overflow-x:auto;padding-bottom:8px}
+.kcol{background:#EDEDE5;border-radius:var(--r);padding:10px;min-height:160px}
+.kcol-hdr{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);padding:4px 4px 10px;display:flex;justify-content:space-between;align-items:baseline}
+.deal-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer;border-left:4px solid var(--green)}
+.deal-card:hover{box-shadow:0 2px 8px rgba(20,37,28,.12)}
+.deal-card.flag{border-left-color:var(--amber)}
+.deal-card.overdue{border-left-color:var(--red)}
+.deal-name{font-weight:700;font-size:13px}
+.deal-meta{font-size:11px;color:var(--mut);margin:2px 0}
+.gates{display:flex;gap:4px;margin-top:6px;align-items:center}
+.gate{width:20px;height:8px;border-radius:4px;background:#E3E3D9}
+.gate.ok{background:var(--green)}
+.dayschip{font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;background:#EEEEE7;color:var(--steel);float:right}
+.dayschip.a{background:var(--amber-lt);color:#8A5A0E}
+.dayschip.r{background:var(--red-lt);color:var(--red)}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+.spin.dk{border-color:var(--line);border-top-color:var(--green)}
+@keyframes sp{to{transform:rotate(360deg)}}
+.timeline{border-left:2px solid var(--line);margin:8px 0 8px 6px;padding-left:14px}
+.tl-item{margin-bottom:10px;position:relative}
+.tl-item:before{content:'';width:8px;height:8px;border-radius:50%;background:var(--green);position:absolute;left:-19px;top:5px}
+.tl-date{font-size:11px;color:var(--mut)}
+.filterbar{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.filterbar input,.filterbar select{width:auto;min-width:140px}
+.role-ss{background:var(--amber-lt);color:#8A5A0E;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.role-sa{background:var(--blue-lt);color:var(--blue);padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.role-sh{background:var(--green-lt);color:var(--green-dk);padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.kpi-bar{height:8px;border-radius:4px;background:#EDEDE5;overflow:hidden;margin:4px 0}
+.kpi-bar-fill{height:100%;border-radius:4px;background:var(--green)}
+.kpiscore{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.kpiscard{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.krow{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.krow:last-child{border:none}
+.calday{background:#fff;border:1px solid var(--line);border-radius:8px;min-height:90px;padding:6px;cursor:pointer}
+.calday.today{border-color:var(--green)}
+.appt{background:var(--green-lt);border-left:3px solid var(--green);border-radius:4px;padding:2px 6px;margin-bottom:3px;font-size:11px}
+.appt.done{opacity:.6;border-left-color:var(--steel);background:#EFEFE8}
+.appt.missed{border-left-color:var(--red);background:var(--red-lt)}
+@media(max-width:600px){.grid2{grid-template-columns:1fr}.kanban-ss,.kanban-sa{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const SB_URL='https://gwclehsjbfeinfdxkuea.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd3Y2xlaHNqYmZlaW5mZHhrdWVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5MTEwMTcsImV4cCI6MjEwMTQ4NzAxN30.Tmw_IiEkkgAlvsfj_GPPdN4Bf-aDEunFpwp55zmLzNc';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+
+// ── constants ──
+const SS_SUB=[
+  {key:'untouched',label:'Untouched',color:'#9DB5A8',exit:'First contact made'},
+  {key:'intro_sent',label:'Intro sent',color:'#D98E1B',exit:'Brand + brochure sent'},
+  {key:'engaged',label:'Engaged',color:'#2E5FB3',exit:'Client responded'},
+  {key:'meeting_booked',label:'Meeting booked',color:'#7B3FA0',exit:'Call scheduled'},
+  {key:'profile_done',label:'Profile collected',color:'#1E6B45',exit:'Ready for handoff'},
+];
+const SA_STAGES=['Evaluation','Qualified','Site Inspection','Proposal','Bidding / Negotiation','Committed','Closed Sale'];
+const SA_FLAGS={'Evaluation':7,'Qualified':14,'Site Inspection':21,'Proposal':30,'Bidding / Negotiation':30,'Committed':21,'Closed Sale':7};
+const TOUCH=['Bidding / Negotiation','Committed'];
+const SCOPES=['Full build (prefab + equipment)','Prefab building only','Equipment supply only'];
+const FARM_TYPES=['Broiler','Breeder','Layer / Multi-tier','Other'];
+const SOURCES=['Referral','Integrator program','Walk-in / Inbound','Agent / Broker','Self-generated'];
+const DOC_TYPES=['Quotation','Official Receipt (OR)','Pro-forma Invoice','Site Inspection Report','Contract / PO','Letter of Intent','Bank Documents','Permit','Other'];
+const QUOTE_STATUS=['Draft','Pending engineering review','Engineering approved','Sent to client','Revised','Final / signed'];
+const TASK_TYPES=['Call','Site visit','Follow-up email','Send brochure','Send quotation','Collect PDC','Collect DP','Engineering coordination','Permit follow-up','Client meeting','Other'];
+const MILESTONES=[
+  ['Land',[['land_negotiation','Land identified / under negotiation'],['land_acquired','Land acquired'],['land_conversion','DAR conversion / land-use clearance'],['land_dev_started','Land development started'],['land_dev_done','Land development completed']]],
+  ['Financing',[['fin_source','Financing source identified'],['loan_submitted','Bank loan application submitted'],['loan_pending','Bank loan pending'],['loan_secured','Bank loan secured / own funds confirmed']]],
+  ['Market',[['integ_applied','Integrator accreditation applied'],['integ_contract','Integrator contract secured']]],
+  ['Permits',[['brgy','Barangay clearance'],['mayor',"Mayor's / business permit"],['denr','DENR ECC / CNC'],['bldg_permit','Building permit'],['elec_permit','Electrical permit']]],
+  ['Site readiness',[['power_applied','Power application filed'],['power_ok','Power connection approved'],['water','Water source developed'],['sitedev_proposal','Site development proposal submitted'],['civil_started','Civil works started'],['civil_done','Civil works completed']]],
+  ['Commercial',[['revised_quote','Revised quotation issued'],['loi','LOI / reservation received']]],
+];
+const MS_LABEL={};MILESTONES.forEach(([,items])=>items.forEach(([k,l])=>MS_LABEL[k]=l));
+const MS_TOTAL=MILESTONES.reduce((a,[,i])=>a+i.length,0);
+
+// ── helpers ──
+const today=()=>new Date().toISOString().slice(0,10);
+const peso=n=>'₱'+Number(n||0).toLocaleString();
+const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const daysSince=d=>Math.max(0,Math.floor((Date.now()-new Date(d+'T00:00:00').getTime())/86400000));
+const uid=()=>Math.random().toString(36).slice(2);
+function dealDays(d){
+  if(TOUCH.includes(d.stage)){
+    const dates=[(d.stage_history||[]).slice(-1)[0]?.date,d.updated_at?.slice(0,10)].filter(Boolean);
+    return Math.max(0,daysSince(dates.sort().pop()||today()));
+  }
+  const h=(d.stage_history||[]).filter(x=>x.stage===d.stage);
+  return daysSince(h.length?h[h.length-1].date:today());
+}
+const dealDayLabel=d=>TOUCH.includes(d.stage)?'idle':'in stage';
+const msCount=d=>Object.values(d.milestones||{}).filter(Boolean).length;
+
+// ── state ──
+let SESSION=null,PROFILE=null,TAB='dash',PIPE_VIEW='ss';
+let DEALS=[],USERS=[],TASKS=[],TRAVEL=[],APPTS=[],PLAYBOOK=[],RULEBOOK=[];
+let MODAL=null,MODAL_TAB='Profile';
+let CAL_MONTH=new Date(new Date().getFullYear(),new Date().getMonth(),1),CAL_FILTER='',CAL_DAY=null;
+let PIPE_SEARCH='',PIPE_SP='',PIPE_STAGE='',PIPE_SCOPE='';
+let KPI_PERIOD='quarter',KPI_VIEW='sa';
+let AI_TOOL='coach',RP_MSGS=[],RP_SCEN='';
+let API_KEY='';
+
+// ── DB ──
+const db={
+  deals:()=>sb.from('crm_deals').select('*').order('created_at',{ascending:false}),
+  upsertDeal:d=>sb.from('crm_deals').upsert(d).select().single(),
+  users:()=>sb.from('crm_users').select('*').order('name'),
+  updateUser:(id,p)=>sb.from('crm_users').update(p).eq('id',id),
+  activities:id=>sb.from('crm_activities').select('*').eq('deal_id',id).order('created_at'),
+  addActivity:a=>sb.from('crm_activities').insert(a),
+  reports:id=>sb.from('crm_visit_reports').select('*').eq('deal_id',id).order('date'),
+  addReport:r=>sb.from('crm_visit_reports').insert(r).select().single(),
+  updateReport:(id,p)=>sb.from('crm_visit_reports').update(p).eq('id',id),
+  docs:id=>sb.from('crm_documents').select('*').eq('deal_id',id).order('created_at'),
+  addDoc:d=>sb.from('crm_documents').insert(d),
+  deleteDoc:id=>sb.from('crm_documents').delete().eq('id',id),
+  quotations:id=>sb.from('crm_quotations').select('*,crm_quotation_thread(*)').eq('deal_id',id).order('created_at'),
+  addQuotation:q=>sb.from('crm_quotations').insert(q).select().single(),
+  updateQuotation:(id,p)=>sb.from('crm_quotations').update(p).eq('id',id),
+  addQThread:t=>sb.from('crm_quotation_thread').insert(t),
+  tasks:()=>sb.from('crm_tasks').select('*,crm_users!assignee_id(name)').order('due',{ascending:true,nullsFirst:false}),
+  upsertTask:t=>sb.from('crm_tasks').upsert(t).select().single(),
+  deleteTask:id=>sb.from('crm_tasks').delete().eq('id',id),
+  travel:()=>sb.from('crm_travel_requests').select('*,crm_users!requester_id(name)').order('created_at',{ascending:false}),
+  addTravel:t=>sb.from('crm_travel_requests').insert(t).select().single(),
+  updateTravel:(id,p)=>sb.from('crm_travel_requests').update(p).eq('id',id),
+  appts:()=>sb.from('crm_appointments').select('*').order('date').order('time_slot'),
+  addAppt:a=>sb.from('crm_appointments').insert(a).select().single(),
+  updateAppt:(id,p)=>sb.from('crm_appointments').update(p).eq('id',id),
+  deleteAppt:id=>sb.from('crm_appointments').delete().eq('id',id),
+  playbook:()=>sb.from('crm_playbook').select('*').order('sort_order'),
+  upsertPlaybook:p=>sb.from('crm_playbook').upsert(p).select().single(),
+  deletePlaybook:id=>sb.from('crm_playbook').delete().eq('id',id),
+  rulebook:()=>sb.from('crm_rulebook').select('*').order('sort_order'),
+  upsertRule:r=>sb.from('crm_rulebook').upsert(r).select().single(),
+  deleteRule:id=>sb.from('crm_rulebook').delete().eq('id',id),
+};
+
+// ── render engine ──
+function render(){document.getElementById('app').innerHTML=buildApp()}
+function el(id){return document.getElementById(id)}
+function userName(id){return USERS.find(u=>u.id===id)?.name||'—'}
+function ssAgent(d){return userName(d.ss_agent_id)}
+function saAgent(d){return userName(d.sa_agent_id)}
+
+async function loadAll(){
+  const [{data:d},{data:u},{data:t},{data:tr},{data:a},{data:p},{data:r}]=await Promise.all([
+    db.deals(),db.users(),db.tasks(),db.travel(),db.appts(),db.playbook(),db.rulebook()
+  ]);
+  DEALS=d||[];USERS=u||[];TASKS=t||[];TRAVEL=tr||[];APPTS=a||[];PLAYBOOK=p||[];RULEBOOK=r||[];
+}
+
+// ── auth ──
+async function init(){
+  const {data:{session}}=await sb.auth.getSession();
+  SESSION=session;
+  if(session){
+    const {data}=await sb.from('crm_users').select('*').eq('id',session.user.id).single();
+    PROFILE=data;
+    await loadAll();
+  }
+  render();
+  sb.auth.onAuthStateChange(async(_,session)=>{
+    SESSION=session;
+    if(session){
+      const {data}=await sb.from('crm_users').select('*').eq('id',session.user.id).single();
+      PROFILE=data;await loadAll();
+    }else{PROFILE=null;DEALS=[];USERS=[];}
+    render();
+  });
+}
+
+// ── APP SHELL ──
+function buildApp(){
+  if(!SESSION)return buildLogin();
+  if(!PROFILE)return'<div style="display:flex;align-items:center;justify-content:center;height:100vh"><span class="spin dk" style="width:24px;height:24px;border-width:3px"></span></div>';
+  const role=PROFILE.role||'Sales Agent';
+  const tabs=[
+    ['dash','Dashboard'],['pipe','Pipeline'],['cal','Calendar'],
+    ['tasks','Tasks'],['travel','Travel'],['play','Playbook'],['rules','Rulebook'],['ai','AI Coach'],
+    ...(role==='Sales Head'?[['kpi','KPIs'],['team','Team']]:[])
+  ];
+  const navBtns=tabs.map(([k,l])=>`<button class="${TAB===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
+  let content='';
+  if(TAB==='dash')content=buildDash();
+  else if(TAB==='pipe')content=buildPipe();
+  else if(TAB==='cal')content=buildCal();
+  else if(TAB==='tasks')content=buildTasks();
+  else if(TAB==='travel')content=buildTravel();
+  else if(TAB==='play')content=buildPlay();
+  else if(TAB==='rules')content=buildRules();
+  else if(TAB==='ai')content=buildAI();
+  else if(TAB==='kpi')content=buildKPI();
+  else if(TAB==='team')content=buildTeam();
+  return`
+    <header>
+      <div class="brand"><h1>PRIME SALES</h1><p>CRM</p></div>
+      <nav>${navBtns}</nav>
+      <div class="hdr-right">
+        <div style="text-align:right">
+          <div style="font-size:13px;font-weight:600;color:#fff">${esc(PROFILE.name)}</div>
+          <div style="font-size:11px;color:#9DB5A8">${esc(role)}${PROFILE.territory?' · '+esc(PROFILE.territory):''}</div>
+        </div>
+        <button onclick="signOut()" style="background:none;border:1px solid #4A564F;color:#9DB5A8;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer">Sign out</button>
+      </div>
+    </header>
+    <main>${content}</main>
+    ${MODAL?buildModal():''}`;
+}
+
+async function go(t){TAB=t;await loadAll();render();}
+async function signOut(){await sb.auth.signOut();SESSION=null;PROFILE=null;render();}
+
+// ── LOGIN ──
+function buildLogin(){
+  return`<div style="min-height:100vh;background:#14251C;display:flex;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:16px;padding:36px 32px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.35)">
+    <div style="margin-bottom:28px">
+      <div style="font-weight:800;font-size:22px;color:#14251C">PRIME AGRITECH</div>
+      <div style="font-size:13px;color:#7A847E;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-top:2px">Sales CRM</div>
+    </div>
+    <div id="auth-msg"></div>
+    <div id="auth-err"></div>
+    <div id="auth-form"></div>
+    <div style="margin-top:20px;font-size:13px;color:#7A847E" id="auth-links"></div>
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #DCDCD2;font-size:11px;color:#9DB5A8;text-align:center">New accounts need Sales Head approval to set role and territory.</div>
+  </div></div>`;
+}
+
+let AUTH_MODE='login';
+function renderAuth(){
+  const lStyle='display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#4A564F;margin-bottom:5px';
+  const iStyle='width:100%;padding:10px 12px;border:1px solid #DCDCD2;border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box';
+  const f=el('auth-form');const links=el('auth-links');if(!f)return;
+  if(AUTH_MODE==='login'){
+    f.innerHTML=`<h2 style="font-size:18px;font-weight:700;margin-bottom:20px;color:#14251C">Sign in</h2>
+      <div style="margin-bottom:12px"><label style="${lStyle}">Email</label><input id="l-email" type="email" style="${iStyle}" placeholder="you@primeagritech.com"></div>
+      <div style="margin-bottom:20px"><label style="${lStyle}">Password</label><input id="l-pass" type="password" style="${iStyle}" placeholder="••••••••"></div>
+      <button onclick="doLogin()" style="width:100%;padding:12px;background:#1E6B45;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Sign in</button>`;
+    links.innerHTML=`No account? <button onclick="AUTH_MODE='signup';renderAuth()" style="background:none;border:none;color:#1E6B45;font-weight:600;cursor:pointer;font-size:inherit;font-family:inherit">Sign up</button>
+      &nbsp;·&nbsp; <button onclick="AUTH_MODE='reset';renderAuth()" style="background:none;border:none;color:#1E6B45;font-weight:600;cursor:pointer;font-size:inherit;font-family:inherit">Forgot password?</button>`;
+  } else if(AUTH_MODE==='signup'){
+    f.innerHTML=`<h2 style="font-size:18px;font-weight:700;margin-bottom:20px;color:#14251C">Create account</h2>
+      <div style="margin-bottom:12px"><label style="${lStyle}">Full name</label><input id="s-name" style="${iStyle}" placeholder="e.g. Roldan Santos"></div>
+      <div style="margin-bottom:12px"><label style="${lStyle}">Email</label><input id="s-email" type="email" style="${iStyle}"></div>
+      <div style="margin-bottom:20px"><label style="${lStyle}">Password</label><input id="s-pass" type="password" style="${iStyle}" placeholder="min. 6 characters"></div>
+      <button onclick="doSignup()" style="width:100%;padding:12px;background:#1E6B45;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Create account</button>`;
+    links.innerHTML=`<button onclick="AUTH_MODE='login';renderAuth()" style="background:none;border:none;color:#1E6B45;font-weight:600;cursor:pointer;font-size:inherit;font-family:inherit">Back to sign in</button>`;
+  } else {
+    f.innerHTML=`<h2 style="font-size:18px;font-weight:700;margin-bottom:20px;color:#14251C">Reset password</h2>
+      <div style="margin-bottom:20px"><label style="${lStyle}">Email</label><input id="r-email" type="email" style="${iStyle}"></div>
+      <button onclick="doReset()" style="width:100%;padding:12px;background:#1E6B45;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Send reset email</button>`;
+    links.innerHTML=`<button onclick="AUTH_MODE='login';renderAuth()" style="background:none;border:none;color:#1E6B45;font-weight:600;cursor:pointer;font-size:inherit;font-family:inherit">Back to sign in</button>`;
+  }
+}
+function showAuthMsg(msg,isErr){
+  const d=el(isErr?'auth-err':'auth-msg');if(!d)return;
+  d.innerHTML=`<div style="background:${isErr?'#F9E7E3':'#E3EFE8'};border:1px solid ${isErr?'#E8C5BD':'#B0D4BC'};border-radius:8px;padding:10px 12px;font-size:13px;color:${isErr?'#B3402E':'#155033'};margin-bottom:14px">${esc(msg)}</div>`;
+}
+async function doLogin(){
+  const e=el('l-email')?.value,p=el('l-pass')?.value;
+  const {error}=await sb.auth.signInWithPassword({email:e,password:p});
+  if(error)showAuthMsg(error.message,true);
+}
+async function doSignup(){
+  const n=el('s-name')?.value?.trim(),e=el('s-email')?.value,p=el('s-pass')?.value;
+  if(!n){showAuthMsg('Full name is required.',true);return;}
+  const {error}=await sb.auth.signUp({email:e,password:p,options:{data:{name:n}}});
+  if(error)showAuthMsg(error.message,true);
+  else showAuthMsg('Account created! Check your email to confirm, then sign in. Your Sales Head will set your role.',false);
+}
+async function doReset(){
+  const e=el('r-email')?.value;
+  const {error}=await sb.auth.resetPasswordForEmail(e,{redirectTo:window.location.origin});
+  if(error)showAuthMsg(error.message,true);
+  else showAuthMsg('Password reset email sent. Check your inbox.',false);
+}
+
+// ── DASHBOARD ──
+function buildDash(){
+  const role=PROFILE.role;const isAdmin=role==='Sales Head';const isSS=role==='Scaled Sales';
+  const open=DEALS.filter(d=>d.status==='open');
+  const qd=new Date();qd.setDate(1);qd.setMonth(Math.floor(qd.getMonth()/3)*3);
+  const won=DEALS.filter(d=>d.status==='won'&&(d.won_date||'')>=qd.toISOString().slice(0,10));
+  const wonVal=won.reduce((a,d)=>a+(+d.value||0),0);
+  const myOpen=isSS?open.filter(d=>d.ss_agent_id===PROFILE.id):open.filter(d=>d.sa_agent_id===PROFILE.id);
+  const flagged=(isAdmin?open:myOpen).filter(d=>dealDays(d)>(SA_FLAGS[d.stage]||14));
+  const noNext=myOpen.filter(d=>!d.next_action);
+  const funnel=SA_STAGES.map(st=>{
+    const ds=(isAdmin?open:myOpen).filter(d=>d.stage===st);
+    return`<div style="background:var(--green-lt);border-radius:8px;padding:10px 12px;text-align:center">
+      <div style="font-size:24px;font-weight:800">${ds.length}</div>
+      <div style="font-size:11px;font-weight:600;color:var(--steel);margin-top:2px">${st}</div>
+      <div class="sub">${peso(ds.reduce((a,d)=>a+(+d.value||0),0))}</div></div>`;
+  }).join('');
+  const flagRows=flagged.slice(0,8).map(d=>`<tr>
+    <td><b>${esc(d.client)}</b><div class="sub">${esc(d.farm)}</div></td>
+    <td>${esc(d.stage)}</td>
+    <td><span class="chip r">${dealDays(d)}d ${dealDayLabel(d)}</span></td>
+    <td class="sub">${esc(saAgent(d))}</td>
+    <td class="sub">${esc(d.next_action||'— none set')}</td></tr>`).join('');
+  return`<div class="section-title">Dashboard</div>
+  <div class="kpi-grid">
+    ${!isSS?`<div class="kpi"><div class="l">Pipeline value</div><div class="v">${peso(myOpen.reduce((a,d)=>a+(+d.value||0),0))}</div><div class="d">${myOpen.length} open deals</div></div>`:''}
+    ${isAdmin?`<div class="kpi"><div class="l">Closed this quarter</div><div class="v">${peso(wonVal)}</div><div class="d">${won.length} deals won</div></div>`:''}
+    <div class="kpi ${flagged.length?'hot':''}"><div class="l">Past stage flag</div><div class="v">${flagged.length}</div><div class="d">need attention</div></div>
+    <div class="kpi ${noNext.length?'hot':''}"><div class="l">No next action</div><div class="v">${noNext.length}</div><div class="d">dormant risk</div></div>
+    ${isSS?`<div class="kpi"><div class="l">My leads</div><div class="v">${myOpen.filter(d=>d.stage==='Lead').length}</div><div class="d">${myOpen.filter(d=>d.substage==='profile_done').length} ready for handoff</div></div>`:''}
+  </div>
+  ${!isSS?`<div class="card" style="margin-bottom:14px"><h3 style="font-size:14px;margin-bottom:10px">Sales funnel</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px">${funnel}</div></div>`:''}
+  <div class="card"><h3 style="font-size:14px;margin-bottom:${flagged.length?10:0}px">⚠ Flagged deals</h3>
+    ${flagged.length?`<table><thead><tr><th>Client</th><th>Stage</th><th>Days</th><th>Agent</th><th>Next action</th></tr></thead><tbody>${flagRows}</tbody></table>`:'<div class="empty">No flagged deals. Clean pipeline!</div>'}
+  </div>`;
+}
+
+// ── PIPELINE ──
+function buildPipe(){
+  const role=PROFILE.role;
+  const allOpen=DEALS.filter(d=>d.status==='open');
+  const allClosed=DEALS.filter(d=>d.status!=='open');
+  function filt(ds){
+    return ds.filter(d=>{
+      if(PIPE_SEARCH){const q=PIPE_SEARCH.toLowerCase();if(![d.client,d.farm,d.location].some(f=>f?.toLowerCase().includes(q)))return false;}
+      if(PIPE_SP){if(PIPE_VIEW==='ss'&&d.ss_agent_id!==PIPE_SP)return false;if(PIPE_VIEW==='sa'&&d.sa_agent_id!==PIPE_SP)return false;}
+      if(PIPE_SCOPE&&d.scope!==PIPE_SCOPE)return false;
+      if(PIPE_STAGE){if(PIPE_VIEW==='ss'&&(d.substage||'untouched')!==PIPE_STAGE)return false;if(PIPE_VIEW==='sa'&&d.stage!==PIPE_STAGE)return false;}
+      return true;
+    });
+  }
+  const agentOpts='<option value="">All agents</option>'+USERS.map(u=>`<option value="${u.id}" ${PIPE_SP===u.id?'selected':''}>${esc(u.name)}</option>`).join('');
+  const clearBtn=(PIPE_SEARCH||PIPE_SP||PIPE_SCOPE||PIPE_STAGE)?`<button class="btn sec sm" onclick="PIPE_SEARCH='';PIPE_SP='';PIPE_SCOPE='';PIPE_STAGE='';render()">Clear</button>`:'';
+  const toggle=`<div style="background:#EDEDE5;border-radius:8px;padding:3px;display:flex;gap:2px">
+    ${role!=='Sales Agent'?`<button class="btn sm ${PIPE_VIEW==='ss'?'':'sec'}" style="${PIPE_VIEW==='ss'?'':'background:transparent;border:none'}" onclick="PIPE_VIEW='ss';PIPE_STAGE='';render()">Scaled Sales</button>`:''}
+    ${role!=='Scaled Sales'?`<button class="btn sm ${PIPE_VIEW==='sa'?'':'sec'}" style="${PIPE_VIEW==='sa'?'':'background:transparent;border:none'}" onclick="PIPE_VIEW='sa';PIPE_STAGE='';render()">Sales Agents</button>`:''}
+  </div>`;
+  const hdr=`<div class="row" style="justify-content:space-between;margin-bottom:12px">
+    <div class="section-title" style="margin:0">Pipeline</div>
+    <div class="row">${toggle}<button class="btn" onclick="openDeal(null)">+ New lead</button></div></div>`;
+
+  if(PIPE_VIEW==='ss'){
+    const leads=filt(allOpen.filter(d=>d.stage==='Lead'));
+    const ssStgOpts='<option value="">All substages</option>'+SS_SUB.map(s=>`<option value="${s.key}" ${PIPE_STAGE===s.key?'selected':''}>${s.label}</option>`).join('');
+    const readyN=leads.filter(d=>(d.substage||'untouched')==='profile_done').length;
+    const cols=SS_SUB.map(ss=>{
+      const ds=leads.filter(d=>(d.substage||'untouched')===ss.key);
+      const cards=ds.map(d=>`<div class="deal-card" style="border-left-color:${ss.color}" onclick="openDeal('${d.id}')">
+        <div class="deal-name">${esc(d.client)}</div>
+        <div class="deal-meta">${esc(d.location)} · ${esc(ssAgent(d))}</div>
+        <div class="deal-meta">${esc(d.contact||'')}${d.email?' · '+esc(d.email):''}</div>
+        ${d.next_action?`<div class="deal-meta" style="margin-top:4px">→ ${esc(d.next_action)} <span class="sub">${esc(d.next_action_date||'')}</span></div>`:'<div class="deal-meta" style="color:var(--red)">→ no next action</div>'}
+      </div>`).join('');
+      return`<div class="kcol"><div class="kcol-hdr" style="border-bottom:3px solid ${ss.color};flex-direction:column;align-items:flex-start;gap:2px;padding-bottom:8px">
+        <span>${ss.label} (${ds.length})</span><span style="font-size:10px;color:var(--mut);font-weight:400">→ ${ss.exit}</span></div>
+        ${cards||'<div class="empty">empty</div>'}</div>`;
+    }).join('');
+    return hdr+`<div class="filterbar">
+      <input placeholder="Search…" value="${esc(PIPE_SEARCH)}" oninput="PIPE_SEARCH=this.value;render()" style="min-width:180px;width:auto">
+      <select onchange="PIPE_SP=this.value;render()" style="width:auto">${agentOpts}</select>
+      <select onchange="PIPE_STAGE=this.value;render()" style="width:auto">${ssStgOpts}</select>
+      ${clearBtn}${readyN?`<span class="chip a" style="margin-left:auto">⚠ ${readyN} ready for handoff</span>`:''}
+    </div>
+    <div class="sub" style="margin-bottom:8px">Scaled Sales goal: intro → meeting → profile → handoff to Sales Agent.</div>
+    <div class="kanban-ss">${cols}</div>`;
+  }
+
+  const saDeals=filt(allOpen.filter(d=>SA_STAGES.includes(d.stage)));
+  const stgOpts='<option value="">All stages</option>'+SA_STAGES.map(s=>`<option ${PIPE_STAGE===s?'selected':''}>${s}</option>`).join('');
+  const cols=SA_STAGES.map(st=>{
+    const ds=saDeals.filter(d=>d.stage===st).sort((a,b)=>dealDays(b)-dealDays(a));
+    const cards=ds.map(d=>{
+      const days=dealDays(d),flag=SA_FLAGS[st]||14,g=d.gates||{};
+      const cls=days>flag?'overdue':days>flag*.7?'flag':'';
+      const dc=days>flag?'r':days>flag*.7?'a':'';
+      return`<div class="deal-card ${cls}" onclick="openDeal('${d.id}')">
+        <span class="dayschip ${dc}">${days}d ${dealDayLabel(d)}</span>
+        <div class="deal-name">${esc(d.client)}</div>
+        <div class="deal-meta">${esc(d.farm)} · ${esc(d.location)}</div>
+        <div class="deal-meta">${peso(d.value)} · ${d.num_bldgs||1}x ${esc(d.house_model||d.farm_type||'')} · ${esc(saAgent(d))}</div>
+        <div class="gates">
+          <span class="gate ${g.land?'ok':''}" title="Land"></span><span class="gate ${g.money?'ok':''}" title="Money"></span>
+          <span class="gate ${g.market?'ok':''}" title="Market"></span><span class="gate ${g.timeline?'ok':''}" title="Timeline"></span>
+          <span class="sub" style="margin-left:auto;font-size:10px">◉ ${msCount(d)}/${MS_TOTAL}</span>
+        </div>
+        ${d.next_action?`<div class="deal-meta" style="margin-top:5px">→ ${esc(d.next_action)} <span class="sub">${esc(d.next_action_date||'')}</span></div>`:'<div class="deal-meta" style="margin-top:5px;color:var(--red)">→ no next action</div>'}
+      </div>`;
+    }).join('');
+    return`<div class="kcol"><div class="kcol-hdr"><span>${st} (${ds.length})</span><span style="font-size:10px;color:var(--mut);font-weight:400">${TOUCH.includes(st)?`flag ${SA_FLAGS[st]}d idle`:`flag ${SA_FLAGS[st]}d`}</span></div>${cards||'<div class="empty">empty</div>'}</div>`;
+  }).join('');
+  const closedRows=filt(allClosed).map(d=>`<tr onclick="openDeal('${d.id}')" style="cursor:pointer">
+    <td><b>${esc(d.client)}</b></td>
+    <td>${d.status==='won'?'<span class="chip g">WON</span>':'<span class="chip r">LOST</span>'}</td>
+    <td>${peso(d.value)}</td><td>${esc(saAgent(d))}</td>
+    <td class="sub">${esc(d.status==='won'?'Won '+(d.won_date||''):d.lost_reason)}</td></tr>`).join('');
+  return hdr+`<div class="filterbar">
+    <input placeholder="Search…" value="${esc(PIPE_SEARCH)}" oninput="PIPE_SEARCH=this.value;render()" style="min-width:180px;width:auto">
+    <select onchange="PIPE_SP=this.value;render()" style="width:auto">${agentOpts}</select>
+    <select onchange="PIPE_STAGE=this.value;render()" style="width:auto">${stgOpts}</select>
+    <select onchange="PIPE_SCOPE=this.value;render()" style="width:auto"><option value="">All scopes</option>${SCOPES.map(s=>`<option ${PIPE_SCOPE===s?'selected':''}>${s}</option>`).join('')}</select>
+    ${clearBtn}<span class="sub" style="margin-left:auto">${saDeals.length} shown</span>
+  </div>
+  <div class="sub" style="margin-bottom:10px">KPI clock starts from handoff date. Bidding/Committed flag on idle days.</div>
+  <div class="kanban-sa">${cols}</div>
+  ${closedRows?`<div class="card" style="margin-top:16px"><h3 style="font-size:14px;margin-bottom:10px">Closed deals</h3><table><thead><tr><th>Client</th><th>Result</th><th>Value</th><th>Agent</th><th>Note</th></tr></thead><tbody>${closedRows}</tbody></table></div>`:''}`;
+}
+
+// ── DEAL MODAL ──
+let DEAL_DATA={activities:[],reports:[],docs:[],quotations:[]};
+
+async function openDeal(id){
+  const d=id?DEALS.find(x=>x.id===id):null;
+  MODAL={type:'deal',deal:d};MODAL_TAB='Profile';
+  if(d){
+    const [{data:a},{data:r},{data:dc},{data:q}]=await Promise.all([
+      db.activities(d.id),db.reports(d.id),db.docs(d.id),db.quotations(d.id)
+    ]);
+    DEAL_DATA={activities:a||[],reports:r||[],docs:dc||[],quotations:q||[]};
+  }else{
+    DEAL_DATA={activities:[],reports:[],docs:[],quotations:[]};
+  }
+  render();
+}
+function closeModal(){MODAL=null;render();}
+
+function buildModal(){
+  if(!MODAL)return'';
+  if(MODAL.type==='deal')return buildDealModal();
+  return'';
+}
+
+function buildDealModal(){
+  const d=MODAL.deal;const isNew=!d;
+  const saAgents=USERS.filter(u=>u.role==='Sales Agent'||u.role==='Sales Head');
+  const spOpts='<option value="">Not yet assigned</option>'+saAgents.map(u=>`<option value="${u.id}" ${d&&d.sa_agent_id===u.id?'selected':''}>${esc(u.name)} — ${esc(u.territory)}</option>`).join('');
+  const ssOpts='<option value="">Unassigned</option>'+USERS.map(u=>`<option value="${u.id}" ${d&&d.ss_agent_id===u.id?'selected':''}>${esc(u.name)}</option>`).join('');
+  const tabs=isNew?[]:['Profile','Milestones','Notes','Docs','Quotations','Visit Reports'];
+  const tabBtns=tabs.map(t=>`<button class="${MODAL_TAB===t?'on':''}" onclick="MODAL_TAB='${t}';render()">${t}</button>`).join('');
+
+  let content='';
+  const g=d?.gates||{land:false,money:false,market:false,timeline:false};
+  const ms=d?.milestones||{};
+
+  if(isNew||MODAL_TAB==='Profile'){
+    content=`<div class="grid2">
+      <div><label>Client name</label><input id="f_client" value="${esc(d?.client||'')}"></div>
+      <div><label>Farm name</label><input id="f_farm" value="${esc(d?.farm||'')}"></div>
+      <div><label>Location (site)</label><input id="f_loc" value="${esc(d?.location||'')}"></div>
+      <div><label>Est. value (PHP)</label><input type="number" id="f_val" value="${d?.value||0}"></div>
+      <div><label>Scaled Sales agent</label><select id="f_ssag">${ssOpts}</select></div>
+      <div><label>Sales Agent</label><select id="f_sp">${spOpts}</select></div>
+      <div><label>Source</label><select id="f_src">${SOURCES.map(s=>`<option ${d?.source===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div><label>Scope</label><select id="f_scope">${SCOPES.map(s=>`<option ${d?.scope===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div><label>Farm type</label><select id="f_ft">${FARM_TYPES.map(s=>`<option ${d?.farm_type===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div><label>House model</label><input id="f_hm" value="${esc(d?.house_model||'')}" placeholder="CCS3, CCS4…"></div>
+      <div><label>No. of buildings</label><input type="number" id="f_nb" value="${d?.num_bldgs||1}" min="1"></div>
+      <div><label>Stage</label><select id="f_stg"><option>Lead</option>${SA_STAGES.map(s=>`<option ${d?.stage===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      ${d?.stage==='Lead'?`<div><label>Lead substage</label><select id="f_ss">${SS_SUB.map(s=>`<option value="${s.key}" ${(d?.substage||'untouched')===s.key?'selected':''}>${s.label}</option>`).join('')}</select></div>`:'<div></div>'}
+      <div><label>Contact</label><input id="f_contact" value="${esc(d?.contact||'')}"></div>
+      <div><label>Email</label><input id="f_email" value="${esc(d?.email||'')}"></div>
+      <div><label>Target date</label><input type="date" id="f_td" value="${d?.target_date||''}"></div>
+      <div><label>Travel budget (PHP)</label><input type="number" id="f_tb" value="${d?.travel_budget||0}"></div>
+      <div class="full"><label>Gates — all 4 before site inspection</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+          ${['land','money','market','timeline'].map(k=>`<label style="display:flex;align-items:center;gap:6px;background:#F4F4EC;padding:7px 10px;border-radius:7px;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0"><input type="checkbox" id="g_${k}" ${g[k]?'checked':''} style="width:auto"> ${k.charAt(0).toUpperCase()+k.slice(1)}</label>`).join('')}
+        </div></div>
+      <div><label>Next action</label><input id="f_na" value="${esc(d?.next_action||'')}"></div>
+      <div><label>Next action date</label><input type="date" id="f_nad" value="${d?.next_action_date||''}"></div>
+      <div class="full"><label>Requirements / notes</label><textarea id="f_reqs" rows="3">${esc(d?.reqs||'')}</textarea></div>
+    </div>
+    ${d?.stage_history?.length?`<div style="margin-top:14px"><h4 style="font-size:13px;margin-bottom:8px">Stage history</h4><div class="timeline">${d.stage_history.map(h=>`<div class="tl-item"><b>${esc(h.stage)}</b><div class="tl-date">${esc(h.date)}</div></div>`).join('')}</div></div>`:''}
+    ${d?.handoff?`<div class="card" style="margin-top:14px;border-left:4px solid var(--green)"><div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 style="font-size:14px">Handoff record</h3><span class="role-ss">Scaled Sales → Sales Agent</span></div>
+      <div class="grid2" style="font-size:13px">
+        <div><b>By</b><br>${esc(d.handoff.ss_agent)}</div><div><b>Date</b><br>${esc(d.handoff.date)} <span class="chip g">KPI start</span></div>
+        <div><b>Meeting</b><br>${esc(d.handoff.meeting_date)}</div><div><b>Assigned to</b><br>${esc(userName(d.handoff.sa_agent_id))}</div>
+        <div class="full"><b>Profile collected</b><br>${esc(d.handoff.client_info)}</div>
+      </div></div>`:''}
+    ${d?.stage==='Lead'&&(d?.substage||'untouched')==='profile_done'&&!d?.handoff?`<div class="notice" style="margin-top:14px"><b>Profile collected — ready for handoff.</b> <button class="btn sm" onclick="showHandoff()">Do handoff →</button></div>`:''}`;
+  }
+
+  if(MODAL_TAB==='Milestones'&&d){
+    const done=Object.values(ms).filter(Boolean).length;
+    const pct=Math.round(done/MS_TOTAL*100);
+    content=`<div style="margin-bottom:10px"><div class="kpi-bar"><div class="kpi-bar-fill" style="width:${pct}%"></div></div>
+      <div class="sub" style="margin-top:4px">${done}/${MS_TOTAL} milestones achieved</div></div>
+      ${MILESTONES.map(([grp,items])=>`<div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);margin-bottom:6px">${grp}</div>
+        ${items.map(([k,l])=>`<div style="display:flex;align-items:center;gap:10px;padding:4px 0;font-size:13px">
+          <input type="checkbox" ${ms[k]?'checked':''} onchange="toggleMs('${d.id}','${k}',this.checked)" style="width:auto">
+          <span style="flex:1">${l}</span>
+          ${ms[k]?`<span class="sub">${ms[k]}</span>`:''}
+        </div>`).join('')}</div>`).join('')}`;
+  }
+
+  if(MODAL_TAB==='Notes'&&d){
+    content=`<div class="row" style="margin-bottom:14px">
+      <input id="new_note" placeholder="Note — what was said, decided, or flagged…" style="flex:1" onkeydown="if(event.key==='Enter')addNote('${d.id}')">
+      <input id="note_by" value="${esc(PROFILE.name)}" style="width:140px">
+      <button class="btn sm" onclick="addNote('${d.id}')">Add</button></div>
+    <div class="timeline">
+      ${DEAL_DATA.activities.slice().reverse().map(a=>`<div class="tl-item"><b>${esc(a.by_name||'—')}</b> — ${esc(a.note)}<div class="tl-date">${a.created_at?.slice(0,10)} · ${esc(a.type)}</div></div>`).join('')}
+      ${DEAL_DATA.activities.length===0?'<div class="sub">No notes yet.</div>':''}
+    </div>`;
+  }
+
+  if(MODAL_TAB==='Docs'&&d){
+    content=`<div class="grid2" style="margin-bottom:10px">
+      <div><label>Type</label><select id="doc_type">${DOC_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
+      <div><label>Name / ref</label><input id="doc_name" placeholder="e.g. AGB-26-001"></div>
+      <div class="full"><label>Link (Google Drive)</label><input id="doc_link" placeholder="https://…"></div>
+      <div><label>Filed by</label><input id="doc_by" value="${esc(PROFILE.name)}"></div>
+    </div>
+    <button class="btn sm" onclick="addDoc('${d.id}')">Log document</button>
+    <div style="margin-top:14px">
+      ${DEAL_DATA.docs.map(dc=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">
+        <span class="chip ${dc.type.includes('Receipt')?'a':'b'}">${esc(dc.type)}</span>
+        ${dc.link?`<a href="${esc(dc.link)}" target="_blank" rel="noopener">${esc(dc.name)}</a>`:`<span>${esc(dc.name)}</span>`}
+        <span class="sub">${dc.created_at?.slice(0,10)} · ${esc(dc.filed_by)}</span>
+        <button class="btn sm sec" style="margin-left:auto" onclick="delDoc('${dc.id}','${d.id}')">×</button>
+      </div>`).join('')}
+      ${DEAL_DATA.docs.length===0?'<div class="empty">No documents logged.</div>':''}
+    </div>`;
+  }
+
+  if(MODAL_TAB==='Quotations'&&d){
+    content=`<div style="margin-bottom:16px">
+      <h4 style="font-size:13px;margin-bottom:10px">New quotation request</h4>
+      <div class="grid2">
+        <div><label>Reference</label><input id="q_ref" placeholder="AGB-26-xxx"></div>
+        <div><label>Value (PHP)</label><input type="number" id="q_val" value="${d.value||0}"></div>
+        <div><label>Requested by</label><input id="q_reqby" value="${esc(PROFILE.name)}"></div><div></div>
+        <div class="full"><label>Requirements for Engineering</label><textarea id="q_note" rows="3" placeholder="Scope, house model, building count, site notes…">${esc(d.reqs||'')}</textarea></div>
+      </div>
+      <button class="btn sm" style="margin-top:8px" onclick="submitQuote('${d.id}')">Submit to Engineering</button>
+    </div>
+    ${DEAL_DATA.quotations.map(q=>`<div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px"><b>${esc(q.ref||'Draft')}</b><span class="chip ${q.status==='Engineering approved'||q.status==='Final / signed'?'g':'b'}">${esc(q.status)}</span></div>
+      <div class="sub" style="margin-bottom:8px">Requested by ${esc(q.req_by)} · ${esc(q.created_at?.slice(0,10))} · ${peso(q.value)}</div>
+      <div style="font-size:12.5px;white-space:pre-wrap;margin-bottom:8px">${esc(q.req_note)}</div>
+      <div style="border-left:2px solid var(--line);margin-left:8px;padding-left:12px;margin-bottom:10px">
+        ${(q.crm_quotation_thread||[]).map(m=>`<div style="margin-bottom:8px;font-size:13px"><span class="sub">${esc(m.role)} — ${esc(m.by_name)} · ${m.created_at?.slice(0,10)}</span><div>${esc(m.message)}</div></div>`).join('')}
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:6px">
+        <select id="qt_role_${q.id}" style="width:auto"><option>Sales</option><option>Engineering</option><option>Quotation Creator</option></select>
+        <input id="qt_by_${q.id}" value="${esc(PROFILE.name)}" style="width:130px">
+        <input id="qt_msg_${q.id}" placeholder="Update…" style="flex:1;min-width:150px">
+        <select id="qt_st_${q.id}" style="width:auto">${QUOTE_STATUS.map(s=>`<option ${q.status===s?'selected':''}>${s}</option>`).join('')}</select>
+        <button class="btn sm" onclick="sendQThread('${d.id}','${q.id}')">Send</button>
+      </div>
+    </div>`).join('')}
+    ${DEAL_DATA.quotations.length===0?'<div class="empty">No quotations started.</div>':''}`;
+  }
+
+  if(MODAL_TAB==='Visit Reports'&&d){
+    content=`<div style="margin-bottom:16px">
+      <h4 style="font-size:13px;margin-bottom:10px">Log visit report</h4>
+      <div class="grid2">
+        <div><label>Date</label><input type="date" id="r_date" value="${today()}"></div>
+        <div><label>Purpose</label><select id="r_purpose">${['Site inspection','Proposal presentation','Follow-up meeting','Signing / collection','Client check-in','Other'].map(p=>`<option>${p}</option>`).join('')}</select></div>
+        <div class="full"><label>Who was met</label><input id="r_who"></div>
+        <div class="full"><label>Outcome (be specific)</label><textarea id="r_outcome" rows="4"></textarea></div>
+        <div><label>Next action committed</label><input id="r_next"></div>
+        <div><label>Travel cost (PHP)</label><input type="number" id="r_cost" value="0"></div>
+      </div>
+      <button class="btn sm" style="margin-top:8px" onclick="submitReport('${d.id}')">Save report</button>
+    </div>
+    ${DEAL_DATA.reports.slice().reverse().map(r=>`<div class="card" style="margin-bottom:8px;padding:12px">
+      <div class="row" style="justify-content:space-between;margin-bottom:4px"><b>${esc(r.purpose)}</b><span class="sub">${esc(r.date)} · ${peso(r.cost)}</span></div>
+      <div class="sub">Met: ${esc(r.who_met)}</div>
+      <div style="margin:6px 0;white-space:pre-wrap;font-size:13px">${esc(r.outcome)}</div>
+      <div class="sub">Next: ${esc(r.next_action)}</div>
+      ${r.ai_review?`<div class="notice" style="margin-top:8px"><b>AI Coach review</b><br><span style="white-space:pre-wrap;font-size:12.5px">${esc(r.ai_review)}</span></div>`:''}
+      <button class="btn sm sec" style="margin-top:8px" onclick="aiReviewReport('${r.id}','${d.id}')">✨ AI review</button>
+    </div>`).join('')}
+    ${DEAL_DATA.reports.length===0?'<div class="empty">No visit reports. Required within 24 hours of every trip.</div>':''}`;
+  }
+
+  const spent=DEAL_DATA.reports.reduce((a,r)=>a+(+r.cost||0),0);
+  const budget=+(d?.travel_budget||0);
+  return`<div class="overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <h2 style="margin-bottom:4px">${isNew?'New lead':esc(d.client)}</h2>
+    ${d?`<div class="sub" style="margin-bottom:12px">${esc(d.stage)}${budget?` · Travel: ${peso(spent)} of ${peso(budget)}${spent>budget?' ⚠ OVER':''}`:spent?` · Travel: ${peso(spent)}`:''}${d.handoff?` · Handoff: ${d.handoff.date}`:''}</div>`:''}
+    ${!isNew?`<div class="modal-tabs">${tabBtns}</div>`:''}
+    ${content}
+    <div class="row" style="margin-top:20px;flex-wrap:wrap">
+      <button class="btn" onclick="saveDeal(${isNew?'null':`'${d.id}'`})">${isNew?'Create lead':'Save changes'}</button>
+      ${!isNew&&d.status==='open'&&(PROFILE.role==='Sales Agent'||PROFILE.role==='Sales Head')?`
+        <button class="btn" style="background:var(--blue)" onclick="markWon('${d.id}')">Mark WON</button>
+        <button class="btn warn" onclick="markLost('${d.id}')">Mark LOST</button>`:''}
+      <button class="btn sec" onclick="closeModal()">Close</button>
+    </div>
+  </div></div>`;
+}
+
+async function saveDeal(id){
+  const v=k=>el(k)?.value;
+  if(!v('f_client')?.trim()){alert('Client name is required.');return;}
+  const deal=id?DEALS.find(d=>d.id===id):null;
+  const stage=v('f_stg');
+  const sh=[...(deal?.stage_history||[])];
+  if(deal&&deal.stage!==stage)sh.push({stage,date:today()});
+  const gates={land:el('g_land')?.checked||false,money:el('g_money')?.checked||false,market:el('g_market')?.checked||false,timeline:el('g_timeline')?.checked||false};
+  const payload={
+    ...(id?{id}:{}),
+    client:v('f_client'),farm:v('f_farm'),location:v('f_loc'),value:+v('f_val')||0,
+    ss_agent_id:v('f_ssag')||null,sa_agent_id:v('f_sp')||null,
+    source:v('f_src'),scope:v('f_scope'),farm_type:v('f_ft'),house_model:v('f_hm'),num_bldgs:+v('f_nb')||1,
+    stage,substage:v('f_ss')||'untouched',gates,
+    next_action:v('f_na'),next_action_date:v('f_nad')||null,
+    target_date:v('f_td')||null,travel_budget:+v('f_tb')||0,
+    contact:v('f_contact'),email:v('f_email'),reqs:v('f_reqs'),
+    stage_history:sh,milestones:deal?.milestones||{},
+    updated_at:new Date().toISOString()
+  };
+  await db.upsertDeal(payload);
+  await loadAll();closeModal();
+}
+async function markWon(id){
+  if(!confirm('Confirm: signed pro-forma invoice, cleared downpayment, and collected PDCs?'))return;
+  await db.upsertDeal({id,status:'won',won_date:today(),stage:'Closed Sale',updated_at:new Date().toISOString()});
+  await loadAll();closeModal();
+}
+async function markLost(id){
+  const r=prompt('Loss reason:');if(!r)return;
+  await db.upsertDeal({id,status:'lost',lost_reason:r,updated_at:new Date().toISOString()});
+  await loadAll();closeModal();
+}
+async function toggleMs(dealId,key,on){
+  const d=DEALS.find(x=>x.id===dealId);if(!d)return;
+  const ms={...d.milestones,[key]:on?today():null};
+  await db.upsertDeal({id:dealId,milestones:ms,updated_at:new Date().toISOString()});
+  if(on)await db.addActivity({deal_id:dealId,type:'Milestone',note:MS_LABEL[key],by_name:PROFILE.name});
+  await loadAll();
+  const updated=DEALS.find(x=>x.id===dealId);if(updated)MODAL.deal=updated;
+  const {data:a}=await db.activities(dealId);DEAL_DATA.activities=a||[];
+  render();
+}
+async function addNote(dealId){
+  const note=el('new_note')?.value?.trim(),by=el('note_by')?.value||PROFILE.name;
+  if(!note)return;
+  await db.addActivity({deal_id:dealId,type:'Note',note,by_name:by});
+  const {data:a}=await db.activities(dealId);DEAL_DATA.activities=a||[];render();
+}
+async function addDoc(dealId){
+  const v=k=>el(k)?.value;
+  if(!v('doc_name')?.trim()){alert('Name required.');return;}
+  await db.addDoc({deal_id:dealId,type:v('doc_type'),name:v('doc_name'),link:v('doc_link'),filed_by:v('doc_by')});
+  const {data}=await db.docs(dealId);DEAL_DATA.docs=data||[];render();
+}
+async function delDoc(docId,dealId){
+  await db.deleteDoc(docId);
+  const {data}=await db.docs(dealId);DEAL_DATA.docs=data||[];render();
+}
+async function submitQuote(dealId){
+  const v=k=>el(k)?.value;
+  if(!v('q_note')?.trim()){alert('Requirements required.');return;}
+  await db.addQuotation({deal_id:dealId,ref:v('q_ref'),value:+v('q_val')||0,req_by:v('q_reqby'),req_note:v('q_note'),status:'Pending engineering review'});
+  const {data}=await db.quotations(dealId);DEAL_DATA.quotations=data||[];render();
+}
+async function sendQThread(dealId,qId){
+  const msg=el('qt_msg_'+qId)?.value?.trim();if(!msg)return;
+  const role=el('qt_role_'+qId)?.value,by=el('qt_by_'+qId)?.value,status=el('qt_st_'+qId)?.value;
+  await db.addQThread({quotation_id:qId,role,by_name:by,message:msg});
+  await db.updateQuotation(qId,{status});
+  const {data}=await db.quotations(dealId);DEAL_DATA.quotations=data||[];render();
+}
+async function submitReport(dealId){
+  const v=k=>el(k)?.value;
+  if(!v('r_outcome')?.trim()){alert('Outcome required.');return;}
+  await db.addReport({deal_id:dealId,date:v('r_date'),purpose:v('r_purpose'),who_met:v('r_who'),outcome:v('r_outcome'),next_action:v('r_next'),cost:+v('r_cost')||0});
+  const {data}=await db.reports(dealId);DEAL_DATA.reports=data||[];render();
+}
+async function aiReviewReport(reportId,dealId){
+  if(!API_KEY){alert('Set your Anthropic API key in the AI Coach tab first.');return;}
+  const d=MODAL.deal,r=DEAL_DATA.reports.find(x=>x.id===reportId);if(!r)return;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:800,
+        system:'You are the sales coach for Prime Agritech. Review the visit report against the four gates (Land, Money, Market, Timeline) and inspection standard. Max 200 words. Structure: 1) Good. 2) Missing. 3) Best next step.',
+        messages:[{role:'user',content:`Deal: ${d.client}/${d.farm}/${d.location}. Stage: ${d.stage}.\nReport (${r.date}, ${r.purpose}):\nMet: ${r.who_met}\nOutcome: ${r.outcome}\nNext: ${r.next_action}`}]})});
+    const data=await res.json();
+    const text=data.content?.filter(c=>c.type==='text').map(c=>c.text).join('\n')||'No response';
+    await db.updateReport(reportId,{ai_review:text});
+    const {data:reps}=await db.reports(dealId);DEAL_DATA.reports=reps||[];render();
+  }catch(e){alert(e.message);}
+}
+function showHandoff(){
+  const d=MODAL.deal;if(!d)return;
+  const saAgents=USERS.filter(u=>u.role==='Sales Agent'||u.role==='Sales Head');
+  const saOpts=saAgents.map(u=>`<option value="${u.id}">${esc(u.name)} — ${esc(u.territory)}</option>`).join('');
+  document.querySelector('.modal').insertAdjacentHTML('beforeend',`
+    <div id="handoff-panel" class="card" style="margin-top:14px;border-left:4px solid var(--green)">
+      <h4 style="font-size:13px;margin-bottom:12px">Handoff to Sales Agent</h4>
+      <div class="grid2">
+        <div><label>Assign to Sales Agent</label><select id="ho_sa"><option value="">Select…</option>${saOpts}</select></div>
+        <div><label>Meeting date</label><input type="date" id="ho_mtg" value="${today()}"></div>
+        <div class="full"><label>Client profile — what did you learn?</label><textarea id="ho_info" rows="4" placeholder="Land status, financing, integrator, timeline, decision makers…">${esc(d.reqs||'')}</textarea></div>
+      </div>
+      <button class="btn" style="margin-top:8px" onclick="doHandoff('${d.id}')">Complete handoff → Evaluation</button>
+    </div>`);
+}
+async function doHandoff(dealId){
+  const saId=el('ho_sa')?.value,info=el('ho_info')?.value?.trim(),mtg=el('ho_mtg')?.value;
+  if(!saId){alert('Select a Sales Agent.');return;}
+  if(!info){alert('Client profile required.');return;}
+  const d=DEALS.find(x=>x.id===dealId);
+  const sh=[...(d?.stage_history||[]),{stage:'Evaluation',date:today()}];
+  await db.upsertDeal({id:dealId,stage:'Evaluation',substage:'profile_done',sa_agent_id:saId,
+    handoff:{date:today(),ss_agent:PROFILE.name,sa_agent_id:saId,meeting_date:mtg,client_info:info},
+    stage_history:sh,updated_at:new Date().toISOString()});
+  await db.addActivity({deal_id:dealId,type:'Handoff',note:'Lead handed off to '+userName(saId)+'. KPI clock starts.',by_name:PROFILE.name});
+  await loadAll();closeModal();
+}
+
+// ── CALENDAR ──
+function buildCal(){
+  const yr=CAL_MONTH.getFullYear(),mo=CAL_MONTH.getMonth();
+  const monthLabel=CAL_MONTH.toLocaleDateString('en-PH',{month:'long',year:'numeric'});
+  const names=[...new Set(APPTS.map(a=>a.sp_name))].filter(Boolean);
+  const fOpts='<option value="">Everyone</option>'+names.map(n=>`<option ${CAL_FILTER===n?'selected':''}>${esc(n)}</option>`).join('');
+  const firstDay=new Date(yr,mo,1),lastDay=new Date(yr,mo+1,0);
+  const startPad=(firstDay.getDay()+6)%7;
+  const totalCells=Math.ceil((startPad+lastDay.getDate())/7)*7;
+  const td=today();
+  const DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const hdrs=DOW.map(d=>`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);text-align:center;padding:6px 0">${d}</div>`).join('');
+  const cells=[...Array(totalCells)].map((_,i)=>{
+    const dn=i-startPad+1;
+    if(dn<1||dn>lastDay.getDate())return'<div style="background:#F5F4EF;border:1px solid #E8E8E0;border-radius:8px;min-height:90px"></div>';
+    const ds=yr+'-'+String(mo+1).padStart(2,'0')+'-'+String(dn).padStart(2,'0');
+    const da=APPTS.filter(a=>a.date===ds&&(!CAL_FILTER||a.sp_name===CAL_FILTER)).sort((a,b)=>(a.time_slot||'').localeCompare(b.time_slot||''));
+    const isToday=ds===td;
+    const items=da.slice(0,3).map(a=>`<div class="appt ${a.status}" onclick="event.stopPropagation();viewAppt('${a.id}')" style="cursor:pointer">
+      ${a.status==='done'?'✓ ':a.status==='missed'?'✗ ':''}<b>${esc(a.sp_name.split(' ').slice(-1)[0])}</b> ${esc(a.time_slot||'')} ${esc(a.client||a.purpose||'')}</div>`).join('');
+    const more=da.length>3?`<div class="sub" style="font-size:10px;padding:2px 4px">+${da.length-3} more</div>`:'';
+    return`<div class="calday ${isToday?'today':''}" onclick="CAL_DAY='${ds}';render()" style="min-height:90px;padding:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:12px;font-weight:${isToday?800:600};${isToday?'background:var(--green);color:#fff;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center':'color:var(--steel)'}">${dn}</span>
+        ${da.length?`<span class="sub" style="font-size:10px">${da.length}</span>`:''}
+      </div>${items}${more}</div>`;
+  }).join('');
+  const monthAppts=APPTS.filter(a=>{const d=new Date(a.date+'T00:00:00');return d.getFullYear()===yr&&d.getMonth()===mo&&(!CAL_FILTER||a.sp_name===CAL_FILTER)});
+  const dayPanel=CAL_DAY?buildDayPanel():'' ;
+  return`<div class="row" style="justify-content:space-between;margin-bottom:8px">
+    <div class="section-title" style="margin:0">Calendar</div>
+    <button class="btn" onclick="MODAL={type:'appt',date:today()};render()">+ Submit appointment</button></div>
+  <div class="row" style="margin-bottom:12px">
+    <button class="btn sec sm" onclick="CAL_MONTH=new Date(${yr},${mo-1},1);CAL_DAY=null;render()">◀ Prev</button>
+    <button class="btn sec sm" onclick="CAL_MONTH=new Date(new Date().getFullYear(),new Date().getMonth(),1);CAL_DAY=null;render()">This month</button>
+    <button class="btn sec sm" onclick="CAL_MONTH=new Date(${yr},${mo+1},1);CAL_DAY=null;render()">Next ▶</button>
+    <b style="font-size:16px;font-weight:800">${monthLabel}</b>
+    <select onchange="CAL_FILTER=this.value;render()" style="width:auto;margin-left:auto">${fOpts}</select>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">${hdrs}</div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${cells}</div>
+  ${monthAppts.length?`<div class="sub" style="margin-top:10px">${monthLabel}: ${monthAppts.length} appointments · ${monthAppts.filter(a=>a.status==='done').length} done · ${monthAppts.filter(a=>a.status==='missed').length} missed</div>`:''}
+  ${dayPanel}
+  ${MODAL?.type==='appt'?buildApptModal():''}`;
+}
+function buildDayPanel(){
+  const da=APPTS.filter(a=>a.date===CAL_DAY&&(!CAL_FILTER||a.sp_name===CAL_FILTER)).sort((a,b)=>(a.time_slot||'').localeCompare(b.time_slot||''));
+  const d=new Date(CAL_DAY+'T00:00:00');
+  const label=d.toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric'});
+  return`<div class="card" style="margin-top:14px">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <h3 style="font-size:14px">${label}</h3>
+      <div class="row"><button class="btn sm" onclick="MODAL={type:'appt',date:'${CAL_DAY}'};render()">+ Add</button><button class="btn sec sm" onclick="CAL_DAY=null;render()">Close</button></div>
+    </div>
+    ${da.map(a=>`<div style="background:${a.status==='done'?'#EFEFE8':a.status==='missed'?'var(--red-lt)':'var(--green-lt)'};border:1px solid ${a.status==='done'?'var(--line)':a.status==='missed'?'var(--red)':'var(--green)'};border-radius:8px;padding:10px;margin-bottom:8px">
+      <div style="font-weight:700">${a.status==='done'?'✓ ':a.status==='missed'?'✗ ':''}${esc(a.sp_name)}</div>
+      <div class="sub">${esc(a.time_slot||'')} · ${esc(a.purpose)}${a.client?' — '+esc(a.client):''}</div>
+      ${a.location?`<div class="sub">${esc(a.location)}</div>`:''}
+      <div class="row" style="margin-top:8px;gap:6px">
+        ${a.status!=='done'?`<button class="btn sm" onclick="setApptStatus('${a.id}','done')">✓ Done</button>`:''}
+        ${a.status!=='missed'?`<button class="btn sm sec" onclick="setApptStatus('${a.id}','missed')">✗ Missed</button>`:''}
+        ${(PROFILE.id===a.user_id||PROFILE.role==='Sales Head')?`<button class="btn sm warn" onclick="delAppt('${a.id}')">Delete</button>`:''}
+      </div>
+    </div>`).join('')}
+    ${da.length===0?'<div class="empty">No appointments on this day.</div>':''}
+  </div>`;
+}
+function buildApptModal(){
+  const dt=MODAL.date||today();
+  return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
+  <div class="modal" style="max-width:520px">
+    <button class="modal-close" onclick="MODAL=null;render()">×</button>
+    <h2 style="margin-bottom:16px">Submit appointment</h2>
+    <div class="grid2">
+      <div><label>Your name</label><input id="a_sp" value="${esc(PROFILE.name)}"></div>
+      <div><label>Date</label><input type="date" id="a_date" value="${dt}"></div>
+      <div><label>Time</label><input type="time" id="a_time"></div>
+      <div><label>Purpose</label><select id="a_purpose">${['Site inspection','Proposal presentation','Follow-up meeting','Signing / collection','Client check-in','Other'].map(p=>`<option>${p}</option>`).join('')}</select></div>
+      <div><label>Client / prospect</label><input id="a_client"></div>
+      <div><label>Location</label><input id="a_loc"></div>
+      <div class="full"><label>Notes</label><input id="a_notes"></div>
+    </div>
+    <button class="btn" style="margin-top:8px" onclick="submitAppt()">Submit</button>
+  </div></div>`;
+}
+async function submitAppt(){
+  const v=k=>el(k)?.value;
+  await db.addAppt({user_id:PROFILE.id,sp_name:v('a_sp'),date:v('a_date'),time_slot:v('a_time'),purpose:v('a_purpose'),client:v('a_client'),location:v('a_loc'),notes:v('a_notes'),status:'planned'});
+  MODAL=null;await loadAll();render();
+}
+async function setApptStatus(id,status){await db.updateAppt(id,{status});await loadAll();render();}
+async function delAppt(id){if(!confirm('Delete?'))return;await db.deleteAppt(id);await loadAll();render();}
+function viewAppt(id){CAL_DAY=APPTS.find(a=>a.id===id)?.date||CAL_DAY;render();}
+
+// ── TASKS ──
+function buildTasks(){
+  const td=today();
+  const overdue=TASKS.filter(t=>t.status!=='done'&&t.due&&t.due<td);
+  const todayT=TASKS.filter(t=>t.status!=='done'&&t.due===td);
+  const upcoming=TASKS.filter(t=>t.status!=='done'&&(!t.due||t.due>td));
+  const done=TASKS.filter(t=>t.status==='done').slice(0,20).reverse();
+  const mkCard=t=>{
+    const deal=DEALS.find(d=>d.id===t.deal_id);
+    const assignee=USERS.find(u=>u.id===t.assignee_id);
+    return`<div class="card" style="margin-bottom:8px;padding:10px;opacity:${t.status==='done'?.6:1}">
+      <div style="display:flex;align-items:baseline;gap:8px;font-weight:600;font-size:13px">
+        <input type="checkbox" ${t.status==='done'?'checked':''} onchange="toggleTask('${t.id}',this.checked)" style="width:auto;cursor:pointer"> ${esc(t.title)}
+      </div>
+      <div class="sub" style="margin-top:2px">${esc(t.type||'')}${t.due?' · due '+t.due:''}${assignee?' · '+esc(assignee.name):''}${deal?' · '+esc(deal.client):''}</div>
+      <div class="row" style="margin-top:6px;gap:6px">
+        <button class="btn sm sec" onclick="editTask('${t.id}')">Edit</button>
+        <button class="btn sm sec" onclick="deleteTask('${t.id}')">Del</button>
+      </div></div>`;
+  };
+  return`<div class="row" style="justify-content:space-between;margin-bottom:12px">
+    <div class="section-title" style="margin:0">Tasks</div>
+    <button class="btn" onclick="editTask(null)">+ Add task</button></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+    <div style="background:#EDEDE5;border-radius:var(--r);padding:10px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--red);font-weight:700;margin-bottom:10px">Overdue (${overdue.length})</div>
+      ${overdue.map(mkCard).join('')}${overdue.length===0?'<div class="empty">None</div>':''}
+    </div>
+    <div style="background:#EDEDE5;border-radius:var(--r);padding:10px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);font-weight:700;margin-bottom:10px">Today (${todayT.length})</div>
+      ${todayT.map(mkCard).join('')}${todayT.length===0?'<div class="empty">Nothing due today</div>':''}
+    </div>
+    <div style="background:#EDEDE5;border-radius:var(--r);padding:10px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);font-weight:700;margin-bottom:10px">Upcoming (${upcoming.length})</div>
+      ${upcoming.map(mkCard).join('')}${upcoming.length===0?'<div class="empty">All clear</div>':''}
+    </div>
+  </div>
+  ${done.length?`<div class="card" style="margin-top:14px"><h3 style="font-size:14px;margin-bottom:10px">Done (last 20)</h3>${done.map(mkCard).join('')}</div>`:''}
+  ${MODAL?.type==='task'?buildTaskModal():''}`;
+}
+function buildTaskModal(){
+  const t=MODAL.task;
+  const spOpts='<option value="">Unassigned</option>'+USERS.map(u=>`<option value="${u.id}" ${t?.assignee_id===u.id?'selected':''}>${esc(u.name)}</option>`).join('');
+  const dealOpts='<option value="">None</option>'+DEALS.filter(d=>d.status==='open').map(d=>`<option value="${d.id}" ${t?.deal_id===d.id?'selected':''}>${esc(d.client)}</option>`).join('');
+  const typeOpts=TASK_TYPES.map(tp=>`<option ${t?.type===tp?'selected':''}>${tp}</option>`).join('');
+  return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
+  <div class="modal" style="max-width:520px">
+    <button class="modal-close" onclick="MODAL=null;render()">×</button>
+    <h2 style="margin-bottom:16px">${t?'Edit':'New'} task</h2>
+    <div class="grid2">
+      <div class="full"><label>Task</label><input id="t_title" value="${esc(t?.title||'')}"></div>
+      <div><label>Type</label><select id="t_type">${typeOpts}</select></div>
+      <div><label>Due date</label><input type="date" id="t_due" value="${t?.due||''}"></div>
+      <div><label>Assignee</label><select id="t_sp">${spOpts}</select></div>
+      <div><label>Linked deal</label><select id="t_deal">${dealOpts}</select></div>
+      <div class="full"><label>Notes</label><input id="t_notes" value="${esc(t?.notes||'')}"></div>
+    </div>
+    <button class="btn" style="margin-top:8px" onclick="saveTask(${t?`'${t.id}'`:'null'})">Save</button>
+  </div></div>`;
+}
+function editTask(id){MODAL={type:'task',task:id?TASKS.find(t=>t.id===id):null};render();}
+async function saveTask(id){
+  const v=k=>el(k)?.value;
+  if(!v('t_title')?.trim()){alert('Title required.');return;}
+  await db.upsertTask({...(id&&id!=='null'?{id}:{}),title:v('t_title'),type:v('t_type'),due:v('t_due')||null,assignee_id:v('t_sp')||null,deal_id:v('t_deal')||null,notes:v('t_notes'),created_by:PROFILE.id,status:'open'});
+  MODAL=null;await loadAll();render();
+}
+async function toggleTask(id,done){await db.upsertTask({id,status:done?'done':'open'});await loadAll();render();}
+async function deleteTask(id){if(!confirm('Delete?'))return;await db.deleteTask(id);await loadAll();render();}
+
+// ── TRAVEL ──
+function buildTravel(){
+  const isAdmin=PROFILE.role==='Sales Head';
+  const rows=TRAVEL.map(r=>`<tr>
+    <td>${r.date}</td><td>${esc(r.crm_users?.name||'—')}</td>
+    <td>${esc(r.destination)}</td><td class="sub">${esc(r.clients)}</td>
+    <td>${peso(r.est_cost)}</td>
+    <td>${r.status==='approved'?'<span class="chip g">Approved</span>':r.status==='denied'?'<span class="chip r">Denied</span>':'<span class="chip a">Pending</span>'}</td>
+    ${isAdmin?`<td class="row" style="gap:4px">${r.status==='pending'?`<button class="btn sm" onclick="approveTravel('${r.id}','approved')">✓</button><button class="btn sm warn" onclick="approveTravel('${r.id}','denied')">✗</button>`:''}</td>`:''}
+  </tr>`).join('');
+  return`<div class="row" style="justify-content:space-between;margin-bottom:12px">
+    <div class="section-title" style="margin:0">Travel</div>
+    <button class="btn" onclick="MODAL={type:'travel'};render()">+ Travel request</button></div>
+  <div class="notice">No pre-approval, no reimbursement. No visit report within 24 hours, no reimbursement. Batch every trip.</div>
+  <div class="card">
+    <table><thead><tr><th>Date</th><th>Agent</th><th>Destination</th><th>Clients</th><th>Est. cost</th><th>Status</th>${isAdmin?'<th>Action</th>':''}</tr></thead>
+    <tbody>${rows}</tbody></table>
+    ${TRAVEL.length===0?'<div class="empty">No travel requests filed.</div>':''}
+  </div>
+  ${MODAL?.type==='travel'?buildTravelModal():''}`;
+}
+function buildTravelModal(){
+  return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
+  <div class="modal" style="max-width:520px">
+    <button class="modal-close" onclick="MODAL=null;render()">×</button>
+    <h2 style="margin-bottom:16px">Travel request</h2>
+    <div class="grid2">
+      <div><label>Date</label><input type="date" id="tr_date" value="${today()}"></div>
+      <div><label>Est. cost (PHP)</label><input type="number" id="tr_cost" value="0"></div>
+      <div class="full"><label>Destination(s)</label><input id="tr_dest"></div>
+      <div class="full"><label>Clients to visit + pipeline stage</label><textarea id="tr_clients" rows="3"></textarea></div>
+      <div class="full"><label>Purpose / expected stage movement</label><input id="tr_purpose"></div>
+    </div>
+    <button class="btn" style="margin-top:8px" onclick="submitTravel()">File request</button>
+  </div></div>`;
+}
+async function submitTravel(){
+  const v=k=>el(k)?.value;
+  if(!v('tr_dest')||!v('tr_clients')){alert('Destination and clients required.');return;}
+  await db.addTravel({requester_id:PROFILE.id,date:v('tr_date'),destination:v('tr_dest'),clients:v('tr_clients'),purpose:v('tr_purpose'),est_cost:+v('tr_cost')||0});
+  MODAL=null;await loadAll();render();
+}
+async function approveTravel(id,status){await db.updateTravel(id,{status});await loadAll();render();}
+
+// ── PLAYBOOK ──
+let PB_CAT='objections';
+function buildPlay(){
+  const cats=[{k:'objections',l:'Objections'},{k:'tactics',l:'Tactics'},{k:'proofs',l:'Proofs'},{k:'materials',l:'Materials'}];
+  const colors={objections:'var(--red)',tactics:'var(--blue)',proofs:'var(--amber)',materials:'var(--steel)'};
+  const isAdmin=PROFILE.role==='Sales Head';
+  const items=PLAYBOOK.filter(p=>p.category===PB_CAT);
+  const catBtns=cats.map(c=>`<button onclick="PB_CAT='${c.k}';render()" style="background:${PB_CAT===c.k?'var(--ink)':'#fff'};color:${PB_CAT===c.k?'#fff':'var(--ink)'};border:1px solid var(--line);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">${c.l} (${PLAYBOOK.filter(p=>p.category===c.k).length})</button>`).join('');
+  const cards=items.map(it=>`<div style="background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;border-top:4px solid ${colors[PB_CAT]}">
+    <h4 style="font-size:13px;margin-bottom:6px">${esc(it.title)}</h4>
+    <p style="font-size:12.5px;color:var(--steel);white-space:pre-wrap">${esc(it.body)}</p>
+    <div class="row" style="margin-top:10px;gap:6px">
+      ${it.link?`<a href="${esc(it.link)}" target="_blank" rel="noopener" class="btn sm" style="text-decoration:none">↗ Open</a>`:''}
+      ${isAdmin?`<button class="btn sm sec" onclick="editPlaybook('${it.id}')">Edit</button><button class="btn sm sec" onclick="deletePlaybook('${it.id}')">Del</button>`:''}
+    </div></div>`).join('');
+  return`<div class="section-title">Playbook</div>
+  <div class="row" style="gap:6px;margin-bottom:14px;flex-wrap:wrap">
+    ${catBtns}
+    ${isAdmin?`<button onclick="editPlaybook(null)" style="margin-left:auto;background:var(--green);color:#fff;border:none;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">+ Add</button>`:''}
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
+    ${cards||'<div class="empty">Nothing here yet.</div>'}
+  </div>
+  ${MODAL?.type==='playbook'?buildPlaybookModal():''}`;
+}
+function buildPlaybookModal(){
+  const it=MODAL.item;
+  return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
+  <div class="modal" style="max-width:560px">
+    <button class="modal-close" onclick="MODAL=null;render()">×</button>
+    <h2 style="margin-bottom:16px">${it?'Edit':'Add'} — ${PB_CAT}</h2>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div><label>Title</label><input id="pb_t" value="${esc(it?.title||'')}"></div>
+      <div><label>Content</label><textarea id="pb_b" rows="6">${esc(it?.body||'')}</textarea></div>
+      <div><label>Link (optional)</label><input id="pb_l" value="${esc(it?.link||'')}" placeholder="https://…"></div>
+    </div>
+    <button class="btn" style="margin-top:10px" onclick="savePlaybook(${it?`'${it.id}'`:'null'})">Save</button>
+  </div></div>`;
+}
+function editPlaybook(id){MODAL={type:'playbook',item:id?PLAYBOOK.find(p=>p.id===id):null};render();}
+async function savePlaybook(id){
+  const t=el('pb_t')?.value,b=el('pb_b')?.value,l=el('pb_l')?.value?.trim();
+  if(!t){alert('Title required.');return;}
+  await db.upsertPlaybook({...(id&&id!=='null'?{id}:{}),category:PB_CAT,title:t,body:b,link:l||'',sort_order:PLAYBOOK.filter(p=>p.category===PB_CAT).length+1});
+  MODAL=null;await loadAll();render();
+}
+async function deletePlaybook(id){if(!confirm('Delete?'))return;await db.deletePlaybook(id);await loadAll();render();}
+
+// ── RULEBOOK ──
+function buildRules(){
+  const isAdmin=PROFILE.role==='Sales Head';
+  return`<div class="row" style="justify-content:space-between;margin-bottom:12px">
+    <div class="section-title" style="margin:0">Rulebook</div>
+    ${isAdmin?'<button class="btn" onclick="editRule(null)">+ Add section</button>':''}
+  </div>
+  <div class="sub" style="margin-bottom:14px">Standing rules. The AI Coach reads this alongside the Playbook.</div>
+  ${RULEBOOK.map(r=>`<div style="background:#fff;border:1px solid var(--line);border-left:4px solid #1F3864;border-radius:var(--r);padding:14px;margin-bottom:10px">
+    <h4 style="font-size:14px;margin-bottom:6px">${esc(r.section)}</h4>
+    <p style="font-size:13px;white-space:pre-wrap;color:var(--steel)">${esc(r.body)}</p>
+    ${isAdmin?`<div class="row" style="margin-top:10px;gap:6px"><button class="btn sm sec" onclick="editRule('${r.id}')">Edit</button><button class="btn sm sec" onclick="deleteRule('${r.id}')">Del</button></div>`:''}
+  </div>`).join('')}
+  ${RULEBOOK.length===0?'<div class="empty">No rules yet.</div>':''}
+  ${MODAL?.type==='rule'?buildRuleModal():''}`;
+}
+function buildRuleModal(){
+  const r=MODAL.rule;
+  return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
+  <div class="modal" style="max-width:540px">
+    <button class="modal-close" onclick="MODAL=null;render()">×</button>
+    <h2 style="margin-bottom:16px">${r?'Edit':'Add'} rule</h2>
+    <div><label>Section</label><input id="rb_t" value="${esc(r?.section||'')}"></div>
+    <div style="margin-top:10px"><label>Content</label><textarea id="rb_b" rows="8">${esc(r?.body||'')}</textarea></div>
+    <button class="btn" style="margin-top:10px" onclick="saveRule(${r?`'${r.id}'`:'null'})">Save</button>
+  </div></div>`;
+}
+function editRule(id){MODAL={type:'rule',rule:id?RULEBOOK.find(r=>r.id===id):null};render();}
+async function saveRule(id){
+  const t=el('rb_t')?.value,b=el('rb_b')?.value;
+  if(!t){alert('Section required.');return;}
+  await db.upsertRule({...(id&&id!=='null'?{id}:{}),section:t,body:b,sort_order:RULEBOOK.length+1});
+  MODAL=null;await loadAll();render();
+}
+async function deleteRule(id){if(!confirm('Delete?'))return;await db.deleteRule(id);await loadAll();render();}
+
+// ── KPIs ──
+function buildKPI(){
+  const now=new Date();
+  const qStart=new Date(now.getFullYear(),Math.floor(now.getMonth()/3)*3,1);
+  const mStart=new Date(now.getFullYear(),now.getMonth(),1);
+  const cutoff=(KPI_PERIOD==='month'?mStart:qStart).toISOString().slice(0,10);
+  const label=KPI_PERIOD==='month'?now.toLocaleDateString('en-PH',{month:'long',year:'numeric'}):'Q'+(Math.floor(now.getMonth()/3)+1)+' '+now.getFullYear();
+  function ssKpi(u){
+    const mine=DEALS.filter(d=>d.ss_agent_id===u.id);
+    const entered=mine.filter(d=>(d.stage_history||[])[0]?.date>=cutoff);
+    const handoffs=mine.filter(d=>d.handoff?.date>=cutoff);
+    const meetings=mine.filter(d=>['meeting_booked','profile_done'].includes(d.substage||'')&&(d.stage_history||[])[0]?.date>=cutoff);
+    return{entered:entered.length,meetings:meetings.length,handoffs:handoffs.length,rate:entered.length?Math.round(handoffs.length/entered.length*100):0};
+  }
+  function saKpi(u){
+    const mine=DEALS.filter(d=>d.sa_agent_id===u.id&&(d.handoff?.date||'')>=cutoff);
+    const won=DEALS.filter(d=>d.sa_agent_id===u.id&&d.status==='won'&&(d.won_date||'')>=cutoff);
+    const wonVal=won.reduce((a,d)=>a+(+d.value||0),0);
+    const target=+u.quarter_target||0;
+    const openD=DEALS.filter(d=>d.sa_agent_id===u.id&&d.status==='open');
+    const pipeVal=openD.reduce((a,d)=>a+(+d.value||0),0);
+    const proposals=mine.filter(d=>(d.stage_history||[]).some(h=>h.stage==='Proposal'&&h.date>=cutoff));
+    const inspections=mine.filter(d=>(d.stage_history||[]).some(h=>h.stage==='Site Inspection'&&h.date>=cutoff));
+    const flagged=openD.filter(d=>dealDays(d)>(SA_FLAGS[d.stage]||14)).length;
+    const noNA=openD.filter(d=>!d.next_action).length;
+    return{received:mine.length,inspections:inspections.length,proposals:proposals.length,won:won.length,wonVal,target,att:target?Math.round(wonVal/target*100):0,pipeVal,pipeRatio:target?+(pipeVal/target).toFixed(1):null,flagged,noNA};
+  }
+  const Bar=pct=>`<div class="kpi-bar"><div class="kpi-bar-fill ${pct<75?'warn':''}" style="width:${Math.min(pct,100)}%"></div></div>`;
+  const ssAgents=USERS.filter(u=>u.role==='Scaled Sales');
+  const saAgents=USERS.filter(u=>u.role==='Sales Agent');
+  return`<div class="row" style="justify-content:space-between;margin-bottom:12px">
+    <div class="section-title" style="margin:0">KPIs — ${label}</div>
+    <div class="row">
+      <select onchange="KPI_PERIOD=this.value;render()" style="width:auto"><option value="quarter" ${KPI_PERIOD==='quarter'?'selected':''}>This quarter</option><option value="month" ${KPI_PERIOD==='month'?'selected':''}>This month</option></select>
+      <div style="background:#EDEDE5;border-radius:8px;padding:3px;display:flex;gap:2px">
+        <button class="btn sm ${KPI_VIEW==='sa'?'':'sec'}" style="${KPI_VIEW==='sa'?'':'background:transparent;border:none'}" onclick="KPI_VIEW='sa';render()">Sales Agents</button>
+        <button class="btn sm ${KPI_VIEW==='ss'?'':'sec'}" style="${KPI_VIEW==='ss'?'':'background:transparent;border:none'}" onclick="KPI_VIEW='ss';render()">Scaled Sales</button>
+      </div>
+    </div></div>
+  <div class="notice" style="margin-bottom:14px"><b>Sales Agent KPIs start from handoff date.</b> Pipeline coverage target: 3–4× quarterly target.</div>
+  <div class="kpiscore">
+    ${KPI_VIEW==='sa'?saAgents.map(u=>{const v=saKpi(u);return`<div class="kpiscard">
+      <h4 style="font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px">${esc(u.name)} <span class="role-sa">Sales Agent — ${esc(u.territory)}</span></h4>
+      <div class="krow"><span>Leads received</span><b>${v.received}</b></div>
+      <div class="krow"><span>Inspections</span><b>${v.inspections}</b></div>
+      <div class="krow"><span>Proposals presented</span><b>${v.proposals}</b></div>
+      <div class="krow"><span>Closed (won)</span><b>${v.won} · ${peso(v.wonVal)}</b></div>
+      ${v.target?`<div class="krow"><span>Attainment</span><b>${v.att}%</b></div>${Bar(v.att)}`:''}
+      <div class="krow"><span>Pipeline coverage</span><b>${v.pipeRatio!==null?v.pipeRatio+'× target':peso(v.pipeVal)}</b></div>
+      ${v.flagged?`<div class="krow" style="color:var(--red)"><span>⚠ Flagged deals</span><b>${v.flagged}</b></div>`:''}
+      ${v.noNA?`<div class="krow" style="color:var(--amber)"><span>No next action</span><b>${v.noNA}</b></div>`:''}
+    </div>`}).join('')||'<div class="empty">No Sales Agents in Team yet.</div>'
+    :ssAgents.map(u=>{const v=ssKpi(u);return`<div class="kpiscard">
+      <h4 style="font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px">${esc(u.name)} <span class="role-ss">Scaled Sales</span></h4>
+      <div class="krow"><span>Leads received</span><b>${v.entered}</b></div>
+      <div class="krow"><span>Meetings booked</span><b>${v.meetings}</b></div>
+      <div class="krow"><span>Handed off to SA</span><b>${v.handoffs}</b></div>
+      <div class="krow"><span>Lead → handoff rate</span><b>${v.rate}%</b></div>
+      ${Bar(v.rate)}
+    </div>`}).join('')||'<div class="empty">No Scaled Sales agents in Team yet.</div>'}
+  </div>`;
+}
+
+// ── TEAM ──
+function buildTeam(){
+  const ROLES=['Scaled Sales','Sales Agent','Sales Head'];
+  return`<div class="section-title">Team</div>
+  <div class="sub" style="margin-bottom:14px">Set each member's role and territory. New accounts default to "Sales Agent".</div>
+  <div class="notice" style="margin-bottom:14px"><b>Roles:</b> Scaled Sales — works the lead funnel. Sales Agent — owns deals from handoff to close. Sales Head — full access, KPIs, team management.</div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Name</th><th>Role</th><th>Territory</th><th>Quarter target (PHP)</th></tr></thead>
+      <tbody>${USERS.map(u=>`<tr>
+        <td><b>${esc(u.name)}</b>${u.id===PROFILE.id?'<span class="sub"> (you)</span>':''}</td>
+        <td><select onchange="updateTeamMember('${u.id}','role',this.value)" style="width:auto;padding:4px 8px;font-size:12px">${ROLES.map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}</select></td>
+        <td><input value="${esc(u.territory)}" onblur="updateTeamMember('${u.id}','territory',this.value)" style="width:160px;padding:4px 8px;font-size:12px" placeholder="e.g. Central Luzon"></td>
+        <td><input type="number" value="${u.quarter_target}" onblur="updateTeamMember('${u.id}','quarter_target',+this.value)" style="width:140px;padding:4px 8px;font-size:12px"></td>
+      </tr>`).join('')}</tbody>
+    </table>
+    ${USERS.length===0?'<div class="empty">No team members yet. They appear here after signing up.</div>':''}
+  </div>`;
+}
+async function updateTeamMember(id,field,value){await db.updateUser(id,{[field]:value});await loadAll();render();}
+
+// ── AI COACH ──
+const COMPANY_RULES=`Prime Agritech Corporation sells poultry farm construction in the Philippines: prefab tunnel-ventilated broiler/breeder houses (e.g. 16x144m, 36,000-40,000 birds), VDL Agrotech equipment.
+STANDARD TERMS: 21-day validity (building), 2-month (equipment). Payment: 50% DP + 25% PDC 30d before delivery + 25% PDC 7d before delivery. Equipment: 50/30/20. Lead time 8-10 weeks building. Installation 30-45 days. Cancellation 25%.
+EXCLUDED: civil works, electrical, water/plumbing/gas, unloading manpower, double-handling.
+PRICING AUTHORITY: 0-3% Sales Head; 3-7% GM; above 7% = GM in writing.
+PIPELINE: Scaled Sales (Untouched→Profile collected) → handoff → Sales Agent (Evaluation→Closed Sale). KPI clock starts at handoff.
+GATES (all 4 before site inspection): Land, Money, Market, Timeline.`;
+
+function playbookCtx(){
+  const f=(arr,cat)=>arr.filter(x=>x.category===cat).map(x=>`- ${x.title}: ${x.body}`).join('\n');
+  return'PLAYBOOK:\nOBJECTIONS:\n'+f(PLAYBOOK,'objections')+'\nTACTICS:\n'+f(PLAYBOOK,'tactics')+'\nPROOFS:\n'+f(PLAYBOOK,'proofs')+'\nMATERIALS:\n'+f(PLAYBOOK,'materials')+'\nRULEBOOK:\n'+RULEBOOK.map(r=>`[${r.section}] ${r.body}`).join('\n');
+}
+async function askClaude(system,messages,max=1200){
+  if(!API_KEY)throw new Error('Enter your Anthropic API key below.');
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:max,system,messages})});
+  if(!res.ok)throw new Error('API error '+res.status);
+  const data=await res.json();
+  return data.content?.filter(c=>c.type==='text').map(c=>c.text).join('\n')||'';
+}
+
+const AI_TOOLS=[
+  {k:'coach',t:'Visit Report Coach',d:'Review a report against gates and standards.'},
+  {k:'reviewer',t:'Deal Reviewer',d:'Scan stuck deals and draft intervention questions.'},
+  {k:'roleplay',t:'Roleplay Trainer',d:'Claude plays a skeptical farm owner. Drill objections.'},
+  {k:'precheck',t:'Proposal Pre-Check',d:'Check quotation terms vs pricing authority.'},
+];
+
+function buildAI(){
+  const objections=PLAYBOOK.filter(p=>p.category==='objections');
+  const dealOpts=DEALS.map(d=>`<option value="${d.id}">${esc(d.client)} — ${esc(d.stage)}</option>`).join('');
+  const rpScenOpts=objections.map(o=>`<option value="${o.id}" ${RP_SCEN===o.id?'selected':''}>${esc(o.title)}</option>`).join('');
+  const menuBtns=AI_TOOLS.map(t=>`<button onclick="AI_TOOL='${t.k}';render()" style="display:block;width:100%;text-align:left;background:${AI_TOOL===t.k?'var(--green-lt)':'#fff'};border:1px solid ${AI_TOOL===t.k?'var(--green)':'var(--line)'};border-radius:8px;padding:12px;margin-bottom:8px;font-size:13px;font-weight:600;cursor:pointer">
+    ${t.t}<span style="display:block;font-weight:400;font-size:11px;color:var(--mut);margin-top:3px">${t.d}</span></button>`).join('');
+
+  let panel='';
+  if(AI_TOOL==='coach'){panel=`<div class="card"><h3 style="font-size:14px;margin-bottom:10px">Visit Report Coach</h3>
+    <div style="margin-bottom:10px"><label>Deal</label><select id="ai_deal" style="width:100%">${dealOpts}</select></div>
+    <div style="margin-bottom:10px"><label>Paste visit report</label><textarea id="ai_report" rows="5" placeholder="Who was met, outcome, site findings, next action…"></textarea></div>
+    <button class="btn" onclick="runCoach()">✨ Review report</button>
+    <div id="ai_out" style="margin-top:12px"></div></div>`;}
+  else if(AI_TOOL==='reviewer'){panel=`<div class="card"><h3 style="font-size:14px;margin-bottom:10px">Deal Reviewer</h3>
+    <div class="sub" style="margin-bottom:10px">Scans deals with no next action and drafts intervention questions.</div>
+    <button class="btn" onclick="runReviewer()">✨ Review stuck deals</button>
+    <div id="ai_out" style="margin-top:12px"></div></div>`;}
+  else if(AI_TOOL==='roleplay'){panel=`<div class="card"><h3 style="font-size:14px;margin-bottom:10px">Roleplay Trainer</h3>
+    <div style="margin-bottom:10px"><label>Objection scenario</label><select id="rp_scen" style="width:100%">${rpScenOpts}</select></div>
+    <button class="btn sm" onclick="startRoleplay()" style="margin-bottom:10px">Start roleplay</button>
+    ${RP_MSGS.length?`<div style="background:#F4F4EC;border-radius:8px;padding:12px;height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:8px" id="rp_log">
+      ${RP_MSGS.map(m=>`<div style="align-self:${m.role==='user'?'flex-end':'flex-start'};background:${m.role==='user'?'var(--green)':'#fff'};color:${m.role==='user'?'#fff':'var(--ink)'};padding:8px 12px;border-radius:10px;max-width:80%;font-size:13px;white-space:pre-wrap">${esc(m.content)}</div>`).join('')}
+    </div>
+    <div class="row"><input id="rp_in" placeholder="Your pitch… (type 'feedback' for coaching)" style="flex:1" onkeydown="if(event.key==='Enter')sendRoleplay()"><button class="btn sm" onclick="sendRoleplay()">Send</button></div>`:''}
+    </div>`;}
+  else{panel=`<div class="card"><h3 style="font-size:14px;margin-bottom:10px">Proposal Pre-Check</h3>
+    <div style="margin-bottom:10px"><label>Paste quotation key terms</label><textarea id="ai_precheck" rows="6" placeholder="e.g. Client X, 1x CCS3 16x144. Total ₱18.5M after 5% discount. Payment 40/30/30. Validity 45 days."></textarea></div>
+    <button class="btn" onclick="runPrecheck()">✨ Pre-check</button>
+    <div id="ai_out" style="margin-top:12px"></div></div>`;}
+
+  return`<div class="section-title">AI Coach</div>
+  ${!API_KEY?'<div class="notice" style="margin-bottom:14px">Enter your Anthropic API key below to enable AI tools. Stored in this browser session only.</div>':''}
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start">
+    <div>
+      ${menuBtns}
+      <div style="margin-top:12px"><label>Anthropic API key</label>
+        <input type="password" value="${esc(API_KEY)}" onchange="API_KEY=this.value" placeholder="sk-ant-…">
+        <div class="sub" style="margin-top:4px">Session only. Sent only to api.anthropic.com.</div>
+      </div>
+    </div>
+    <div>${panel}</div>
+  </div>`;
+}
+
+async function runCoach(){
+  const dealId=el('ai_deal')?.value,report=el('ai_report')?.value;
+  const out=el('ai_out');if(!out)return;
+  out.innerHTML='<span class="spin dk"></span> Thinking…';
+  try{
+    const deal=DEALS.find(d=>d.id===dealId);
+    const ans=await askClaude(`You are the sales coach for Prime Agritech. Review the visit report against the four gates and inspection standard. Max 200 words. Structure: 1) Good. 2) Missing. 3) Best next step.\n\n${COMPANY_RULES}`,
+      [{role:'user',content:`Deal: ${deal?.client}/${deal?.farm}/${deal?.location}. Stage: ${deal?.stage}.\n${report}`}]);
+    out.innerHTML=`<div style="background:#F4F4EC;border-radius:8px;padding:12px;white-space:pre-wrap;font-size:13px">${esc(ans)}</div>`;
+  }catch(e){out.innerHTML=`<div class="notice">${esc(e.message)}</div>`;}
+}
+async function runReviewer(){
+  const out=el('ai_out');if(!out)return;
+  const stuck=DEALS.filter(d=>d.status==='open'&&!d.next_action);
+  if(!stuck.length){out.innerHTML='<div class="empty">No stuck deals right now.</div>';return;}
+  out.innerHTML='<span class="spin dk"></span> Thinking…';
+  try{
+    const msg='STUCK DEALS:\n'+stuck.map(d=>`- ${d.client} (${d.farm}) | stage ${d.stage} | value ${peso(d.value)} | next action: NONE`).join('\n');
+    const ans=await askClaude(`You are preparing the Sales Head for the weekly pipeline review. For each stuck deal: likely stall cause, 2-3 questions to ask the salesperson, one unsticking move. Brief and practical.\n\n${COMPANY_RULES}\n\n${playbookCtx()}`,
+      [{role:'user',content:msg}],1600);
+    out.innerHTML=`<div style="background:#F4F4EC;border-radius:8px;padding:12px;white-space:pre-wrap;font-size:13px">${esc(ans)}</div>`;
+  }catch(e){out.innerHTML=`<div class="notice">${esc(e.message)}</div>`;}
+}
+function startRoleplay(){
+  RP_SCEN=el('rp_scen')?.value||'';
+  RP_MSGS=[{role:'assistant',content:"Magandang umaga. You are from Prime Agritech? I have a few minutes — but I already have a quotation from a local builder and it is much cheaper. Why should I even listen?"}];
+  render();
+  setTimeout(()=>{const l=el('rp_log');if(l)l.scrollTop=l.scrollHeight;},50);
+}
+async function sendRoleplay(){
+  const inp=el('rp_in');const txt=inp?.value?.trim();if(!txt)return;
+  if(inp)inp.value='';
+  RP_MSGS=[...RP_MSGS,{role:'user',content:txt}];render();
+  setTimeout(()=>{const l=el('rp_log');if(l)l.scrollTop=l.scrollHeight;},50);
+  try{
+    const scen=PLAYBOOK.find(p=>p.id===RP_SCEN);
+    const ans=await askClaude(`You roleplay a skeptical Filipino poultry farm owner. Press objections realistically. Concede only on genuinely good specific arguments. Keep replies 2-4 sentences. If user types "feedback": break character and score 1-10 against the playbook.\n\nScenario: ${scen?.title||'Price objection'}\n\n${COMPANY_RULES}\n\n${playbookCtx()}`,
+      RP_MSGS.map(m=>({role:m.role,content:m.content})),600);
+    RP_MSGS=[...RP_MSGS,{role:'assistant',content:ans}];render();
+    setTimeout(()=>{const l=el('rp_log');if(l)l.scrollTop=l.scrollHeight;},50);
+  }catch(e){RP_MSGS=[...RP_MSGS,{role:'assistant',content:'Error: '+e.message}];render();}
+}
+async function runPrecheck(){
+  const txt=el('ai_precheck')?.value;const out=el('ai_out');if(!out)return;
+  out.innerHTML='<span class="spin dk"></span> Thinking…';
+  try{
+    const ans=await askClaude(`You are the quotation pre-send checker for Prime Agritech. Compare the submitted terms against standard terms and pricing authority. Output: 1) PASS or HOLD. 2) Violations with rule broken and who must approve. 3) Missing items. Max 200 words.\n\n${COMPANY_RULES}`,
+      [{role:'user',content:txt}]);
+    out.innerHTML=`<div style="background:#F4F4EC;border-radius:8px;padding:12px;white-space:pre-wrap;font-size:13px">${esc(ans)}</div>`;
+  }catch(e){out.innerHTML=`<div class="notice">${esc(e.message)}</div>`;}
+}
+
+// ── BOOT ──
+window.addEventListener('DOMContentLoaded',()=>{
+  init().then(()=>{
+    if(!SESSION){renderAuth();}
+  });
+});
+sb.auth.onAuthStateChange((_,s)=>{if(!s)setTimeout(renderAuth,100);});
+</script>
+</body>
+</html>
