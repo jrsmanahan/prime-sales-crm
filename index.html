@@ -463,6 +463,15 @@ function buildPipe(){
 
   const saDeals=filt(allOpen.filter(d=>SA_STAGES.includes(d.stage)));
   const stgOpts='<option value="">All stages</option>'+SA_STAGES.map(s=>`<option ${PIPE_STAGE===s?'selected':''}>${s}</option>`).join('');
+  const SA_DEFS={
+    'Evaluation':'Confirm all 4 gates: Land, Money, Market, Timeline',
+    'Qualified':'Gates confirmed — book site inspection',
+    'Site Inspection':'Visit farm site — file report within 24hrs',
+    'Proposal':'Present quotation in person or video call',
+    'Bidding / Negotiation':'Active back-and-forth on price or terms',
+    'Committed':'Verbal yes — collect signatures and PDCs',
+    'Closed Sale':'Signed pro-forma, cleared DP, PDCs collected',
+  };
   const cols=SA_STAGES.map(st=>{
     const ds=saDeals.filter(d=>d.stage===st).sort((a,b)=>dealDays(b)-dealDays(a));
     const cards=ds.map(d=>{
@@ -482,7 +491,13 @@ function buildPipe(){
         ${d.next_action?`<div class="deal-meta" style="margin-top:5px">→ ${esc(d.next_action)} <span class="sub">${esc(d.next_action_date||'')}</span></div>`:'<div class="deal-meta" style="margin-top:5px;color:var(--red)">→ no next action</div>'}
       </div>`;
     }).join('');
-    return`<div class="kcol"><div class="kcol-hdr"><span>${st} (${ds.length})</span><span style="font-size:10px;color:var(--mut);font-weight:400">${TOUCH.includes(st)?`flag ${SA_FLAGS[st]}d idle`:`flag ${SA_FLAGS[st]}d`}</span></div>${cards||'<div class="empty">empty</div>'}</div>`;
+    return`<div class="kcol"><div class="kcol-hdr" style="flex-direction:column;align-items:flex-start;gap:2px;padding-bottom:8px;border-bottom:3px solid var(--green)">
+      <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+        <span>${st} (${ds.length})</span>
+        <span style="font-size:10px;color:var(--mut);font-weight:400">${TOUCH.includes(st)?`flag ${SA_FLAGS[st]}d idle`:`flag ${SA_FLAGS[st]}d`}</span>
+      </div>
+      <span style="font-size:10px;color:var(--mut);font-weight:400">→ ${SA_DEFS[st]||''}</span>
+    </div>${cards||'<div class="empty">empty</div>'}</div>`;
   }).join('');
   const closedRows=filt(allClosed).map(d=>`<tr onclick="openDeal('${d.id}')" style="cursor:pointer">
     <td><b>${esc(d.client)}</b></td>
