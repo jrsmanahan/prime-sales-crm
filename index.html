@@ -108,7 +108,32 @@ tr:hover td{background:#FAFAF6}
 .appt{background:var(--green-lt);border-left:3px solid var(--green);border-radius:4px;padding:2px 6px;margin-bottom:3px;font-size:11px}
 .appt.done{opacity:.6;border-left-color:var(--steel);background:#EFEFE8}
 .appt.missed{border-left-color:var(--red);background:var(--red-lt)}
-@media(max-width:600px){.grid2{grid-template-columns:1fr}.kanban-ss,.kanban-sa{grid-template-columns:1fr}}
+@media(max-width:768px){
+.grid2{grid-template-columns:1fr}
+.kanban-ss,.kanban-sa{grid-template-columns:1fr}
+header{padding:0 12px;gap:8px}
+.brand{padding:10px 0}
+.brand h1{font-size:14px}
+nav{width:100%;overflow-x:auto;padding-bottom:2px;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+nav button{padding:10px 10px;font-size:12px;white-space:nowrap}
+.hdr-right{display:none}
+main{padding:14px 12px 80px}
+.section-title{font-size:16px}
+.kpi-grid{grid-template-columns:1fr 1fr}
+.modal{padding:16px;margin:0;border-radius:12px 12px 0 0;position:fixed;bottom:0;left:0;right:0;max-width:100%;max-height:85vh}
+.overlay{padding:0;align-items:flex-end}
+.modal-tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+.modal-tabs button{white-space:nowrap}
+.filterbar{flex-direction:column;align-items:stretch}
+.filterbar input,.filterbar select{width:100%!important;min-width:unset!important}
+table{font-size:12px}
+th{font-size:10px;padding:6px 4px}
+td{padding:7px 4px}
+.kpiscore{grid-template-columns:1fr}
+div[style*="grid-template-columns:220px"]{grid-template-columns:1fr!important}
+.row{gap:8px}
+.btn{padding:8px 12px;font-size:12px}
+}
 </style>
 </head>
 <body>
