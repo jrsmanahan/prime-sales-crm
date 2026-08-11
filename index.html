@@ -502,18 +502,18 @@ function buildPipe(){
 }
 
 // ── DEAL MODAL ──
-let DEAL_DATA={activities:[],reports:[],docs:[],quotations:[]};
+let DEAL_DATA={activities:[],reports:[],docs:[]};
 
 async function openDeal(id){
   const d=id?DEALS.find(x=>x.id===id):null;
   MODAL={type:'deal',deal:d};MODAL_TAB='Profile';
   if(d){
-    const [{data:a},{data:r},{data:dc},{data:q}]=await Promise.all([
-      db.activities(d.id),db.reports(d.id),db.docs(d.id),db.quotations(d.id)
+    const [{data:a},{data:r},{data:dc}]=await Promise.all([
+      db.activities(d.id),db.reports(d.id),db.docs(d.id)
     ]);
-    DEAL_DATA={activities:a||[],reports:r||[],docs:dc||[],quotations:q||[]};
+    DEAL_DATA={activities:a||[],reports:r||[],docs:dc||[]};
   }else{
-    DEAL_DATA={activities:[],reports:[],docs:[],quotations:[]};
+    DEAL_DATA={activities:[],reports:[],docs:[]};
   }
   render();
 }
@@ -530,7 +530,7 @@ function buildDealModal(){
   const saAgents=USERS.filter(u=>u.role==='Sales Agent'||u.role==='Sales Head');
   const spOpts='<option value="">Not yet assigned</option>'+saAgents.map(u=>`<option value="${u.id}" ${d&&d.sa_agent_id===u.id?'selected':''}>${esc(u.name)} — ${esc(u.territory)}</option>`).join('');
   const ssOpts='<option value="">Unassigned</option>'+USERS.map(u=>`<option value="${u.id}" ${d&&d.ss_agent_id===u.id?'selected':''}>${esc(u.name)}</option>`).join('');
-  const tabs=isNew?[]:['Profile','Milestones','Notes','Docs','Quotations','Visit Reports'];
+  const tabs=isNew?[]:['Profile','Milestones','Notes','Docs','Visit Reports'];
   const tabBtns=tabs.map(t=>`<button class="${MODAL_TAB===t?'on':''}" onclick="MODAL_TAB='${t}';render()">${t}</button>`).join('');
 
   let content='';
@@ -600,51 +600,35 @@ function buildDealModal(){
   }
 
   if(MODAL_TAB==='Docs'&&d){
-    content=`<div class="grid2" style="margin-bottom:10px">
-      <div><label>Type</label><select id="doc_type">${DOC_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></div>
-      <div><label>Name / ref</label><input id="doc_name" placeholder="e.g. AGB-26-001"></div>
-      <div class="full"><label>Link (Google Drive)</label><input id="doc_link" placeholder="https://…"></div>
-      <div><label>Filed by</label><input id="doc_by" value="${esc(PROFILE.name)}"></div>
+    const docRows=DEAL_DATA.docs.map(dc=>{
+      const ext=(dc.name||'').split('.').pop().toLowerCase();
+      const icon=ext==='pdf'?'📄':['jpg','jpeg','png'].includes(ext)?'🖼️':['xls','xlsx'].includes(ext)?'📊':'📎';
+      return`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px">
+        <span style="font-size:20px">${icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(dc.name)}</div>
+          <div class="sub">${esc(dc.type)} · ${dc.created_at?.slice(0,10)} · ${esc(dc.filed_by)}</div>
+        </div>
+        ${dc.storage_path?`<button class="btn sm sec" onclick="downloadDoc('${dc.storage_path}','${esc(dc.name)}')">⬇ Download</button>`
+          :dc.link?`<a href="${esc(dc.link)}" target="_blank" rel="noopener" class="btn sm sec" style="text-decoration:none">↗ Open</a>`:''}
+        <button class="btn sm sec" onclick="delDoc('${dc.id}','${d.id}')">×</button>
+      </div>`;
+    }).join('');
+    content=`<div id="drop-zone" ondrop="handleDrop(event,'${d.id}')" ondragover="event.preventDefault();this.style.borderColor='var(--green)';this.style.background='var(--green-lt)'" ondragleave="this.style.borderColor='#DCDCD2';this.style.background='#fff'"
+      style="border:2px dashed #DCDCD2;border-radius:10px;padding:28px;text-align:center;margin-bottom:14px;cursor:pointer;transition:all .2s" onclick="el('file-inp-${d.id}').click()">
+      <div style="font-size:32px;margin-bottom:6px">📎</div>
+      <div style="font-weight:700;font-size:14px">Drag &amp; drop files here</div>
+      <div class="sub" style="margin-top:4px">or click to browse — PDF, Word, Excel, images (max 50MB each)</div>
+      <input type="file" id="file-inp-${d.id}" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" style="display:none" onchange="handleFileInput(event,'${d.id}')">
     </div>
-    <button class="btn sm" onclick="addDoc('${d.id}')">Log document</button>
-    <div style="margin-top:14px">
-      ${DEAL_DATA.docs.map(dc=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">
-        <span class="chip ${dc.type.includes('Receipt')?'a':'b'}">${esc(dc.type)}</span>
-        ${dc.link?`<a href="${esc(dc.link)}" target="_blank" rel="noopener">${esc(dc.name)}</a>`:`<span>${esc(dc.name)}</span>`}
-        <span class="sub">${dc.created_at?.slice(0,10)} · ${esc(dc.filed_by)}</span>
-        <button class="btn sm sec" style="margin-left:auto" onclick="delDoc('${dc.id}','${d.id}')">×</button>
-      </div>`).join('')}
-      ${DEAL_DATA.docs.length===0?'<div class="empty">No documents logged.</div>':''}
-    </div>`;
-  }
-
-  if(MODAL_TAB==='Quotations'&&d){
-    content=`<div style="margin-bottom:16px">
-      <h4 style="font-size:13px;margin-bottom:10px">New quotation request</h4>
-      <div class="grid2">
-        <div><label>Reference</label><input id="q_ref" placeholder="AGB-26-xxx"></div>
-        <div><label>Value (PHP)</label><input type="number" id="q_val" value="${d.value||0}"></div>
-        <div><label>Requested by</label><input id="q_reqby" value="${esc(PROFILE.name)}"></div><div></div>
-        <div class="full"><label>Requirements for Engineering</label><textarea id="q_note" rows="3" placeholder="Scope, house model, building count, site notes…">${esc(d.reqs||'')}</textarea></div>
-      </div>
-      <button class="btn sm" style="margin-top:8px" onclick="submitQuote('${d.id}')">Submit to Engineering</button>
+    <div class="row" style="margin-bottom:12px;gap:8px;flex-wrap:wrap">
+      <select id="doc_type" style="width:auto">${DOC_TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
+      <input id="doc_link" placeholder="Or paste a link (Google Drive, email…)" style="flex:1;min-width:160px">
+      <input id="doc_name" placeholder="Name / description" style="width:160px">
+      <button class="btn sm" onclick="addDocLink('${d.id}')">Log link</button>
     </div>
-    ${DEAL_DATA.quotations.map(q=>`<div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px">
-      <div class="row" style="justify-content:space-between;margin-bottom:6px"><b>${esc(q.ref||'Draft')}</b><span class="chip ${q.status==='Engineering approved'||q.status==='Final / signed'?'g':'b'}">${esc(q.status)}</span></div>
-      <div class="sub" style="margin-bottom:8px">Requested by ${esc(q.req_by)} · ${esc(q.created_at?.slice(0,10))} · ${peso(q.value)}</div>
-      <div style="font-size:12.5px;white-space:pre-wrap;margin-bottom:8px">${esc(q.req_note)}</div>
-      <div style="border-left:2px solid var(--line);margin-left:8px;padding-left:12px;margin-bottom:10px">
-        ${(q.crm_quotation_thread||[]).map(m=>`<div style="margin-bottom:8px;font-size:13px"><span class="sub">${esc(m.role)} — ${esc(m.by_name)} · ${m.created_at?.slice(0,10)}</span><div>${esc(m.message)}</div></div>`).join('')}
-      </div>
-      <div class="row" style="flex-wrap:wrap;gap:6px">
-        <select id="qt_role_${q.id}" style="width:auto"><option>Sales</option><option>Engineering</option><option>Quotation Creator</option></select>
-        <input id="qt_by_${q.id}" value="${esc(PROFILE.name)}" style="width:130px">
-        <input id="qt_msg_${q.id}" placeholder="Update…" style="flex:1;min-width:150px">
-        <select id="qt_st_${q.id}" style="width:auto">${QUOTE_STATUS.map(s=>`<option ${q.status===s?'selected':''}>${s}</option>`).join('')}</select>
-        <button class="btn sm" onclick="sendQThread('${d.id}','${q.id}')">Send</button>
-      </div>
-    </div>`).join('')}
-    ${DEAL_DATA.quotations.length===0?'<div class="empty">No quotations started.</div>':''}`;
+    <div id="upload-progress-${d.id}"></div>
+    <div>${docRows}${DEAL_DATA.docs.length===0?'<div class="empty">No documents yet. Drag &amp; drop files above or log a link.</div>':''}</div>`;
   }
 
   if(MODAL_TAB==='Visit Reports'&&d){
@@ -739,28 +723,49 @@ async function addNote(dealId){
   await db.addActivity({deal_id:dealId,type:'Note',note,by_name:by});
   const {data:a}=await db.activities(dealId);DEAL_DATA.activities=a||[];render();
 }
-async function addDoc(dealId){
-  const v=k=>el(k)?.value;
-  if(!v('doc_name')?.trim()){alert('Name required.');return;}
-  await db.addDoc({deal_id:dealId,type:v('doc_type'),name:v('doc_name'),link:v('doc_link'),filed_by:v('doc_by')});
+async function addDocLink(dealId){
+  const type=el('doc_type')?.value,link=el('doc_link')?.value?.trim(),name=el('doc_name')?.value?.trim();
+  if(!name&&!link){alert('Name or link required.');return;}
+  await db.addDoc({deal_id:dealId,type,name:name||link,link:link||'',filed_by:PROFILE.name,storage_path:''});
   const {data}=await db.docs(dealId);DEAL_DATA.docs=data||[];render();
+}
+async function handleDrop(event,dealId){
+  event.preventDefault();
+  await uploadFiles([...event.dataTransfer.files],dealId);
+}
+async function handleFileInput(event,dealId){
+  await uploadFiles([...event.target.files],dealId);
+}
+async function uploadFiles(files,dealId){
+  const prog=el('upload-progress-'+dealId);
+  for(const file of files){
+    if(prog)prog.innerHTML=`<div class="notice" style="margin-bottom:8px">⬆ Uploading ${esc(file.name)}…</div>`;
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path=`${dealId}/${Date.now()}_${safeName}`;
+    const {error}=await sb.storage.from('deal-docs').upload(path,file,{upsert:false});
+    if(error){
+      if(prog)prog.innerHTML=`<div class="notice" style="background:var(--red-lt);margin-bottom:8px">Error uploading ${esc(file.name)}: ${esc(error.message)}</div>`;
+      await new Promise(r=>setTimeout(r,3000));
+      if(prog)prog.innerHTML='';
+      continue;
+    }
+    const ext=file.name.split('.').pop().toLowerCase();
+    const type=ext==='pdf'?'Quotation':['jpg','jpeg','png'].includes(ext)?'Site Inspection Report':'Other';
+    await db.addDoc({deal_id:dealId,type,name:file.name,link:'',filed_by:PROFILE.name,storage_path:path});
+    if(prog)prog.innerHTML='';
+  }
+  const {data}=await db.docs(dealId);DEAL_DATA.docs=data||[];render();
+}
+async function downloadDoc(path,name){
+  const {data,error}=await sb.storage.from('deal-docs').createSignedUrl(path,120);
+  if(error){alert('Could not generate download link: '+error.message);return;}
+  const a=document.createElement('a');a.href=data.signedUrl;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);
 }
 async function delDoc(docId,dealId){
+  const doc=DEAL_DATA.docs.find(d=>d.id===docId);
+  if(doc?.storage_path)await sb.storage.from('deal-docs').remove([doc.storage_path]);
   await db.deleteDoc(docId);
   const {data}=await db.docs(dealId);DEAL_DATA.docs=data||[];render();
-}
-async function submitQuote(dealId){
-  const v=k=>el(k)?.value;
-  if(!v('q_note')?.trim()){alert('Requirements required.');return;}
-  await db.addQuotation({deal_id:dealId,ref:v('q_ref'),value:+v('q_val')||0,req_by:v('q_reqby'),req_note:v('q_note'),status:'Pending engineering review'});
-  const {data}=await db.quotations(dealId);DEAL_DATA.quotations=data||[];render();
-}
-async function sendQThread(dealId,qId){
-  const msg=el('qt_msg_'+qId)?.value?.trim();if(!msg)return;
-  const role=el('qt_role_'+qId)?.value,by=el('qt_by_'+qId)?.value,status=el('qt_st_'+qId)?.value;
-  await db.addQThread({quotation_id:qId,role,by_name:by,message:msg});
-  await db.updateQuotation(qId,{status});
-  const {data}=await db.quotations(dealId);DEAL_DATA.quotations=data||[];render();
 }
 async function submitReport(dealId){
   const v=k=>el(k)?.value;
