@@ -94,9 +94,10 @@ tr:hover td{background:#FAFAF6}
 .tl-date{font-size:11px;color:var(--mut)}
 .filterbar{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .filterbar input,.filterbar select{width:auto;min-width:140px}
-.role-ss{background:var(--amber-lt);color:#8A5A0E;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.role-lg{background:var(--amber-lt);color:#8A5A0E;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
 .role-sa{background:var(--blue-lt);color:var(--blue);padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
 .role-sh{background:var(--green-lt);color:var(--green-dk);padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.role-est{background:#F3E8FF;color:#6B21A8;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
 .kpi-bar{height:8px;border-radius:4px;background:#EDEDE5;overflow:hidden;margin:4px 0}
 .kpi-bar-fill{height:100%;border-radius:4px;background:var(--green)}
 .kpiscore{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
@@ -190,7 +191,7 @@ const msCount=d=>Object.values(d.milestones||{}).filter(Boolean).length;
 
 // ── state ──
 let SESSION=null,PROFILE=null,TAB='dash',PIPE_VIEW='ss';
-let DEALS=[],USERS=[],TASKS=[],TRAVEL=[],APPTS=[],PLAYBOOK=[],RULEBOOK=[];
+let DEALS=[],USERS=[],TASKS=[],TRAVEL=[],APPTS=[],PLAYBOOK=[],RULEBOOK=[],QUOTE_REQS=[];
 let MODAL=null,MODAL_TAB='Profile';
 let CAL_MONTH=new Date(new Date().getFullYear(),new Date().getMonth(),1),CAL_FILTER='',CAL_DAY=null;
 let PIPE_SEARCH='',PIPE_SP='',PIPE_STAGE='',PIPE_SCOPE='';
@@ -212,6 +213,10 @@ const db={
   docs:id=>sb.from('crm_documents').select('*').eq('deal_id',id).order('created_at'),
   addDoc:d=>sb.from('crm_documents').insert(d),
   deleteDoc:id=>sb.from('crm_documents').delete().eq('id',id),
+  quoteReqs:()=>sb.from('crm_quote_requests').select('*,crm_users!requested_by(name),crm_deals(client,farm,location,sa_agent_id)').order('created_at',{ascending:false}),
+  addQuoteReq:q=>sb.from('crm_quote_requests').insert(q).select().single(),
+  updateQuoteReq:(id,p)=>sb.from('crm_quote_requests').update(p).eq('id',id),
+  dealQuoteReqs:dealId=>sb.from('crm_quote_requests').select('*,crm_users!requested_by(name)').eq('deal_id',dealId).order('created_at',{ascending:false}),
   quotations:id=>sb.from('crm_quotations').select('*,crm_quotation_thread(*)').eq('deal_id',id).order('created_at'),
   addQuotation:q=>sb.from('crm_quotations').insert(q).select().single(),
   updateQuotation:(id,p)=>sb.from('crm_quotations').update(p).eq('id',id),
@@ -242,10 +247,10 @@ function ssAgent(d){return userName(d.ss_agent_id)}
 function saAgent(d){return userName(d.sa_agent_id)}
 
 async function loadAll(){
-  const [{data:d},{data:u},{data:t},{data:tr},{data:a},{data:p},{data:r}]=await Promise.all([
-    db.deals(),db.users(),db.tasks(),db.travel(),db.appts(),db.playbook(),db.rulebook()
+  const [{data:d},{data:u},{data:t},{data:tr},{data:a},{data:p},{data:r},{data:qr}]=await Promise.all([
+    db.deals(),db.users(),db.tasks(),db.travel(),db.appts(),db.playbook(),db.rulebook(),db.quoteReqs()
   ]);
-  DEALS=d||[];USERS=u||[];TASKS=t||[];TRAVEL=tr||[];APPTS=a||[];PLAYBOOK=p||[];RULEBOOK=r||[];
+  DEALS=d||[];USERS=u||[];TASKS=t||[];TRAVEL=tr||[];APPTS=a||[];PLAYBOOK=p||[];RULEBOOK=r||[];QUOTE_REQS=qr||[];
 }
 
 // ── auth ──
@@ -276,7 +281,9 @@ function buildApp(){
   const tabs=[
     ['dash','Dashboard'],['pipe','Pipeline'],['cal','Calendar'],
     ['tasks','Tasks'],['travel','Travel'],['play','Playbook'],['rules','Rulebook'],['ai','AI Coach'],
-    ...(role==='Sales Head'?[['kpi','KPIs'],['team','Team']]:[])
+    ...(role==='Sales Head'?[['kpi','KPIs'],['team','Team']]:[]),
+    ...(role==='Estimator'?[['quotes','Quotations']]:[]),
+    ...(role==='Sales Head'?[['quotes','Quotations']]:[] )
   ];
   const navBtns=tabs.map(([k,l])=>`<button class="${TAB===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
   let content='';
@@ -290,6 +297,7 @@ function buildApp(){
   else if(TAB==='ai')content=buildAI();
   else if(TAB==='kpi')content=buildKPI();
   else if(TAB==='team')content=buildTeam();
+  else if(TAB==='quotes')content=buildQuotes();
   return`
     <header>
       <div class="brand"><h1>PRIME SALES</h1><p>CRM</p></div>
@@ -376,7 +384,7 @@ async function doReset(){
 
 // ── DASHBOARD ──
 function buildDash(){
-  const role=PROFILE.role;const isAdmin=role==='Sales Head';const isSS=role==='Scaled Sales';
+  const role=PROFILE.role;const isAdmin=role==='Sales Head';const isSS=role==='Lead Gen';
   const open=DEALS.filter(d=>d.status==='open');
   const qd=new Date();qd.setDate(1);qd.setMonth(Math.floor(qd.getMonth()/3)*3);
   const won=DEALS.filter(d=>d.status==='won'&&(d.won_date||'')>=qd.toISOString().slice(0,10));
@@ -399,7 +407,8 @@ function buildDash(){
     <td class="sub">${esc(d.next_action||'— none set')}</td></tr>`).join('');
   return`<div class="section-title">Dashboard</div>
   <div class="kpi-grid">
-    ${!isSS?`<div class="kpi"><div class="l">Pipeline value</div><div class="v">${peso(myOpen.reduce((a,d)=>a+(+d.value||0),0))}</div><div class="d">${myOpen.length} open deals</div></div>`:''}
+    ${role==='Estimator'?`<div class="kpi ${QUOTE_REQS.filter(q=>q.status==='pending').length?'hot':''}"><div class="l">Pending quotations</div><div class="v">${QUOTE_REQS.filter(q=>q.status==='pending').length}</div><div class="d">${QUOTE_REQS.filter(q=>q.status==='in_progress').length} in progress</div></div>`:''}
+    ${!isSS&&role!=='Estimator'?`<div class="kpi"><div class="l">Pipeline value</div><div class="v">${peso(myOpen.reduce((a,d)=>a+(+d.value||0),0))}</div><div class="d">${myOpen.length} open deals</div></div>`:''}
     ${isAdmin?`<div class="kpi"><div class="l">Closed this quarter</div><div class="v">${peso(wonVal)}</div><div class="d">${won.length} deals won</div></div>`:''}
     <div class="kpi ${flagged.length?'hot':''}"><div class="l">Past stage flag</div><div class="v">${flagged.length}</div><div class="d">need attention</div></div>
     <div class="kpi ${noNext.length?'hot':''}"><div class="l">No next action</div><div class="v">${noNext.length}</div><div class="d">dormant risk</div></div>
@@ -428,8 +437,8 @@ function buildPipe(){
   const agentOpts='<option value="">All agents</option>'+USERS.map(u=>`<option value="${u.id}" ${PIPE_SP===u.id?'selected':''}>${esc(u.name)}</option>`).join('');
   const clearBtn=(PIPE_SEARCH||PIPE_SP||PIPE_SCOPE||PIPE_STAGE)?`<button class="btn sec sm" onclick="PIPE_SEARCH='';PIPE_SP='';PIPE_SCOPE='';PIPE_STAGE='';render()">Clear</button>`:'';
   const toggle=`<div style="background:#EDEDE5;border-radius:8px;padding:3px;display:flex;gap:2px">
-    ${role!=='Sales Agent'?`<button class="btn sm ${PIPE_VIEW==='ss'?'':'sec'}" style="${PIPE_VIEW==='ss'?'':'background:transparent;border:none'}" onclick="PIPE_VIEW='ss';PIPE_STAGE='';render()">Scaled Sales</button>`:''}
-    ${role!=='Scaled Sales'?`<button class="btn sm ${PIPE_VIEW==='sa'?'':'sec'}" style="${PIPE_VIEW==='sa'?'':'background:transparent;border:none'}" onclick="PIPE_VIEW='sa';PIPE_STAGE='';render()">Sales Agents</button>`:''}
+    ${role!=='Sales Agent'?`<button class="btn sm ${PIPE_VIEW==='ss'?'':'sec'}" style="${PIPE_VIEW==='ss'?'':'background:transparent;border:none'}" onclick="PIPE_VIEW='ss';PIPE_STAGE='';render()">Lead Gen</button>`:''}
+    ${role!=='Lead Gen'?`<button class="btn sm ${PIPE_VIEW==='sa'?'':'sec'}" style="${PIPE_VIEW==='sa'?'':'background:transparent;border:none'}" onclick="PIPE_VIEW='sa';PIPE_STAGE='';render()">Sales Agents</button>`:''}
   </div>`;
   const hdr=`<div class="row" style="justify-content:space-between;margin-bottom:12px">
     <div class="section-title" style="margin:0">Pipeline</div>
@@ -457,7 +466,7 @@ function buildPipe(){
       <select onchange="PIPE_STAGE=this.value;render()" style="width:auto">${ssStgOpts}</select>
       ${clearBtn}${readyN?`<span class="chip a" style="margin-left:auto">⚠ ${readyN} ready for handoff</span>`:''}
     </div>
-    <div class="sub" style="margin-bottom:8px">Scaled Sales goal: intro → meeting → profile → handoff to Sales Agent.</div>
+    <div class="sub" style="margin-bottom:8px">Lead Gen goal: intro → meeting → profile → handoff to Sales Agent.</div>
     <div class="kanban-ss">${cols}</div>`;
   }
 
@@ -517,18 +526,18 @@ function buildPipe(){
 }
 
 // ── DEAL MODAL ──
-let DEAL_DATA={activities:[],reports:[],docs:[]};
+let DEAL_DATA={activities:[],reports:[],docs:[],quoteReqs:[]};
 
 async function openDeal(id){
   const d=id?DEALS.find(x=>x.id===id):null;
   MODAL={type:'deal',deal:d};MODAL_TAB='Profile';
   if(d){
-    const [{data:a},{data:r},{data:dc}]=await Promise.all([
-      db.activities(d.id),db.reports(d.id),db.docs(d.id)
+    const [{data:a},{data:r},{data:dc},{data:qr}]=await Promise.all([
+      db.activities(d.id),db.reports(d.id),db.docs(d.id),db.dealQuoteReqs(d.id)
     ]);
-    DEAL_DATA={activities:a||[],reports:r||[],docs:dc||[]};
+    DEAL_DATA={activities:a||[],reports:r||[],docs:dc||[],quoteReqs:qr||[]};
   }else{
-    DEAL_DATA={activities:[],reports:[],docs:[]};
+    DEAL_DATA={activities:[],reports:[],docs:[],quoteReqs:[]};
   }
   render();
 }
@@ -558,7 +567,7 @@ function buildDealModal(){
       <div><label>Farm name</label><input id="f_farm" value="${esc(d?.farm||'')}"></div>
       <div><label>Location (site)</label><input id="f_loc" value="${esc(d?.location||'')}"></div>
       <div><label>Est. value (PHP)</label><input type="number" id="f_val" value="${d?.value||0}"></div>
-      <div><label>Scaled Sales agent</label><select id="f_ssag">${ssOpts}</select></div>
+      <div><label>Lead Gen agent</label><select id="f_ssag">${ssOpts}</select></div>
       <div><label>Sales Agent</label><select id="f_sp">${spOpts}</select></div>
       <div><label>Source</label><select id="f_src">${SOURCES.map(s=>`<option ${d?.source===s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div><label>Scope</label><select id="f_scope">${SCOPES.map(s=>`<option ${d?.scope===s?'selected':''}>${s}</option>`).join('')}</select></div>
@@ -569,6 +578,7 @@ function buildDealModal(){
       ${d?.stage==='Lead'?`<div><label>Lead substage</label><select id="f_ss">${SS_SUB.map(s=>`<option value="${s.key}" ${(d?.substage||'untouched')===s.key?'selected':''}>${s.label}</option>`).join('')}</select></div>`:'<div></div>'}
       <div><label>Contact</label><input id="f_contact" value="${esc(d?.contact||'')}"></div>
       <div><label>Email</label><input id="f_email" value="${esc(d?.email||'')}"></div>
+      <div class="full"><label>Office / business address</label><input id="f_offaddr" value="${esc(d?.office_address||'')}" placeholder="e.g. Brgy. San Isidro, San Fernando, Pampanga"></div>
       <div><label>Target date</label><input type="date" id="f_td" value="${d?.target_date||''}"></div>
       <div><label>Travel budget (PHP)</label><input type="number" id="f_tb" value="${d?.travel_budget||0}"></div>
       <div class="full"><label>Gates — qualify before site inspection</label>
@@ -589,7 +599,7 @@ function buildDealModal(){
       <div class="full"><label>Requirements / notes</label><textarea id="f_reqs" rows="3">${esc(d?.reqs||'')}</textarea></div>
     </div>
     ${d?.stage_history?.length?`<div style="margin-top:14px"><h4 style="font-size:13px;margin-bottom:8px">Stage history</h4><div class="timeline">${d.stage_history.map(h=>`<div class="tl-item"><b>${esc(h.stage)}</b><div class="tl-date">${esc(h.date)}</div></div>`).join('')}</div></div>`:''}
-    ${d?.handoff?`<div class="card" style="margin-top:14px;border-left:4px solid var(--green)"><div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 style="font-size:14px">Handoff record</h3><span class="role-ss">Scaled Sales → Sales Agent</span></div>
+    ${d?.handoff?`<div class="card" style="margin-top:14px;border-left:4px solid var(--green)"><div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 style="font-size:14px">Handoff record</h3><span class="role-lg">Lead Gen → Sales Agent</span></div>
       <div class="grid2" style="font-size:13px">
         <div><b>By</b><br>${esc(d.handoff.ss_agent)}</div><div><b>Date</b><br>${esc(d.handoff.date)} <span class="chip g">KPI start</span></div>
         <div><b>Meeting</b><br>${esc(d.handoff.meeting_date)}</div><div><b>Assigned to</b><br>${esc(userName(d.handoff.sa_agent_id))}</div>
@@ -624,6 +634,20 @@ function buildDealModal(){
   }
 
   if(MODAL_TAB==='Docs'&&d){
+    // Pending quote requests for this deal
+    const dqr=DEAL_DATA.quoteReqs||[];
+    const pendingBadge=dqr.filter(q=>q.status==='pending'||q.status==='in_progress').length;
+    const qrRows=dqr.map(q=>{
+      const statusChip=q.status==='ready'?'<span class="chip g">✓ Ready</span>':q.status==='in_progress'?'<span class="chip a">In progress</span>':'<span class="chip n">Pending</span>';
+      return`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${q.status==='ready'?'var(--green-lt)':q.status==='in_progress'?'var(--amber-lt)':'#F4F4EC'};margin-bottom:6px;font-size:13px">
+        <div style="flex:1">
+          <div style="font-weight:600">${esc(q.house_model||d.house_model||'')} · ${q.num_bldgs||d.num_bldgs||1} building${(q.num_bldgs||1)>1?'s':''}</div>
+          <div class="sub">${esc(q.scope||d.scope||'')}${q.special_notes?' · '+esc(q.special_notes):''}</div>
+          <div class="sub">Requested by ${esc(q.crm_users?.name||'—')} · ${q.created_at?.slice(0,10)}</div>
+        </div>
+        ${statusChip}
+      </div>`;
+    }).join('');
     const docRows=DEAL_DATA.docs.map(dc=>{
       const ext=(dc.name||'').split('.').pop().toLowerCase();
       const icon=ext==='pdf'?'📄':['jpg','jpeg','png'].includes(ext)?'🖼️':['xls','xlsx'].includes(ext)?'📊':'📎';
@@ -638,7 +662,16 @@ function buildDealModal(){
         <button class="btn sm sec" onclick="delDoc('${dc.id}','${d.id}')">×</button>
       </div>`;
     }).join('');
-    content=`<div id="drop-zone" ondrop="handleDrop(event,'${d.id}')" ondragover="event.preventDefault();this.style.borderColor='var(--green)';this.style.background='var(--green-lt)'" ondragleave="this.style.borderColor='#DCDCD2';this.style.background='#fff'"
+    content=`
+    ${dqr.length||PROFILE.role!=='Estimator'?`<div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <h4 style="font-size:13px">Quotation requests ${pendingBadge?`<span class="chip a">${pendingBadge} pending</span>`:''}</h4>
+        ${PROFILE.role!=='Estimator'?`<button class="btn sm" onclick="showQuoteReqForm('${d.id}')">+ Request quotation</button>`:''}
+      </div>
+      ${qrRows||'<div class="sub" style="padding:6px 0">No quotation requests yet.</div>'}
+      <div id="qreq-form-${d.id}"></div>
+    </div><hr style="border:none;border-top:1px solid var(--line);margin-bottom:14px">`:''}
+    <div id="drop-zone" ondrop="handleDrop(event,'${d.id}')" ondragover="event.preventDefault();this.style.borderColor='var(--green)';this.style.background='var(--green-lt)'" ondragleave="this.style.borderColor='#DCDCD2';this.style.background='#fff'"
       style="border:2px dashed #DCDCD2;border-radius:10px;padding:28px;text-align:center;margin-bottom:14px;cursor:pointer;transition:all .2s" onclick="el('file-inp-${d.id}').click()">
       <div style="font-size:32px;margin-bottom:6px">📎</div>
       <div style="font-weight:700;font-size:14px">Drag &amp; drop files here</div>
@@ -776,7 +809,7 @@ async function saveDeal(id){
     stage,substage:v('f_ss')||'untouched',gates,
     next_action:nextAction,next_action_date:nextActionDate,
     target_date:v('f_td')||null,travel_budget:+v('f_tb')||0,
-    contact:v('f_contact'),email:v('f_email'),reqs:v('f_reqs'),
+    contact:v('f_contact'),email:v('f_email'),office_address:v('f_offaddr')||'',reqs:v('f_reqs'),
     stage_history:sh,milestones:deal?.milestones||{},
     updated_at:new Date().toISOString()
   };
@@ -1333,7 +1366,7 @@ function buildKPI(){
     return{introduced,callsDone,meetings,handoffs,assigned,handoffRate};
   }
 
-  const ssAgents=USERS.filter(u=>u.role==='Scaled Sales');
+  const ssAgents=USERS.filter(u=>u.role==='Lead Gen');
   const saAgents=USERS.filter(u=>u.role==='Sales Agent');
 
   const saCards=saAgents.map(u=>{
@@ -1387,7 +1420,7 @@ function buildKPI(){
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
         <div>
           <div style="font-weight:700;font-size:14px">${esc(u.name)}</div>
-          <span class="role-ss">Scaled Sales</span>
+          <span class="role-lg">Lead Gen</span>
         </div>
       </div>
 
@@ -1400,7 +1433,7 @@ function buildKPI(){
           v.handoffRate||0,60)}
       `)}
     </div>`;
-  }).join('')||'<div class="empty">No Scaled Sales agents configured in Team yet.</div>';
+  }).join('')||'<div class="empty">No Lead Gen agents configured in Team yet.</div>';
 
   return`<div class="row" style="justify-content:space-between;margin-bottom:16px">
     <div class="section-title" style="margin:0">KPIs & Goals — ${label}</div>
@@ -1411,7 +1444,7 @@ function buildKPI(){
       </select>
       <div style="background:#EDEDE5;border-radius:8px;padding:3px;display:flex;gap:2px">
         <button class="btn sm ${KPI_VIEW==='sa'?'':'sec'}" style="${KPI_VIEW==='sa'?'':'background:transparent;border:none'}" onclick="KPI_VIEW='sa';render()">Sales Agents</button>
-        <button class="btn sm ${KPI_VIEW==='ss'?'':'sec'}" style="${KPI_VIEW==='ss'?'':'background:transparent;border:none'}" onclick="KPI_VIEW='ss';render()">Scaled Sales</button>
+        <button class="btn sm ${KPI_VIEW==='ss'?'':'sec'}" style="${KPI_VIEW==='ss'?'':'background:transparent;border:none'}" onclick="KPI_VIEW='ss';render()">Lead Gen</button>
       </div>
     </div>
   </div>
@@ -1421,12 +1454,164 @@ function buildKPI(){
   <div class="kpiscore">${KPI_VIEW==='sa'?saCards:ssCards}</div>`;
 }
 
+// ── QUOTE REQUEST FORM (inline in deal modal) ──
+function showQuoteReqForm(dealId){
+  const d=DEALS.find(x=>x.id===dealId)||MODAL?.deal;
+  const estimators=USERS.filter(u=>u.role==='Estimator');
+  const estOpts='<option value="">Any estimator</option>'+estimators.map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('');
+  const el2=el('qreq-form-'+dealId);
+  if(!el2)return;
+  el2.innerHTML=`<div class="card" style="margin-top:8px;padding:12px;border-left:4px solid var(--blue)">
+    <h4 style="font-size:13px;margin-bottom:10px">New quotation request</h4>
+    <div class="grid2">
+      <div><label>House model</label><input id="qrf_hm" value="${esc(d?.house_model||'')}" placeholder="e.g. CCS3 16x144"></div>
+      <div><label>No. of buildings</label><input type="number" id="qrf_nb" value="${d?.num_bldgs||1}" min="1"></div>
+      <div><label>Scope</label><select id="qrf_scope">${SCOPES.map(s=>`<option ${(d?.scope||'')=== s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div><label>Assign to</label><select id="qrf_est">${estOpts}</select></div>
+      <div class="full"><label>Special requirements / site notes</label><textarea id="qrf_notes" rows="3" placeholder="Access issues, special dimensions, client requests, bank requirements…"></textarea></div>
+    </div>
+    <div class="row" style="margin-top:8px;gap:8px">
+      <button class="btn sm" onclick="submitQuoteReq('${dealId}')">Submit to Estimator</button>
+      <button class="btn sm sec" onclick="el('qreq-form-${dealId}').innerHTML=''">Cancel</button>
+    </div>
+  </div>`;
+}
+
+async function submitQuoteReq(dealId){
+  const v=k=>el(k)?.value;
+  const payload={
+    deal_id:dealId,
+    requested_by:PROFILE.id,
+    assigned_to:v('qrf_est')||null,
+    scope:v('qrf_scope'),
+    house_model:v('qrf_hm'),
+    num_bldgs:+v('qrf_nb')||1,
+    special_notes:v('qrf_notes'),
+    status:'pending'
+  };
+  await db.addQuoteReq(payload);
+  // Auto-create a task for the estimator
+  const est=v('qrf_est');
+  if(est){
+    const deal=DEALS.find(d=>d.id===dealId);
+    await db.upsertTask({
+      title:`Prepare quotation — ${deal?.client||''}`,
+      type:'Other',
+      due:new Date(Date.now()+7*86400000).toISOString().slice(0,10),
+      assignee_id:est,
+      deal_id:dealId,
+      notes:`${v('qrf_hm')||''} · ${v('qrf_nb')||1} bldg · ${v('qrf_notes')||''}`,
+      created_by:PROFILE.id,
+      status:'open'
+    });
+  }
+  const {data:qr}=await db.dealQuoteReqs(dealId);
+  DEAL_DATA.quoteReqs=qr||[];
+  await loadAll();
+  render();
+}
+
+// ── QUOTATIONS PAGE (Estimator + Sales Head) ──
+function buildQuotes(){
+  const role=PROFILE.role;
+  const isEst=role==='Estimator';
+  const pending=QUOTE_REQS.filter(q=>q.status==='pending');
+  const inprog=QUOTE_REQS.filter(q=>q.status==='in_progress');
+  const ready=QUOTE_REQS.filter(q=>q.status==='ready');
+
+  const mkCard=(q,showUpload)=>{
+    const deal=q.crm_deals;
+    const sa=USERS.find(u=>u.id===deal?.sa_agent_id);
+    return`<div style="background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <div style="font-weight:700;font-size:14px">${esc(deal?.client||'—')} <span class="sub">· ${esc(deal?.farm||'')} · ${esc(deal?.location||'')}</span></div>
+          <div class="sub">${esc(q.house_model||'')} · ${q.num_bldgs||1} building${(q.num_bldgs||1)>1?'s':''} · ${esc(q.scope||'')}</div>
+          ${q.special_notes?`<div class="sub" style="margin-top:2px">📝 ${esc(q.special_notes)}</div>`:''}
+          <div class="sub" style="margin-top:4px">Requested by ${esc(q.crm_users?.name||'—')} · ${q.created_at?.slice(0,10)}${sa?' · SA: '+esc(sa.name):''}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${q.status==='pending'?`<button class="btn sm" onclick="updateQReqStatus('${q.id}','in_progress')">Start →</button>`:''}
+          ${q.status==='in_progress'?`<span class="chip a">In progress</span>`:''}
+          ${q.status==='ready'?`<span class="chip g">✓ Ready</span>`:''}
+        </div>
+      </div>
+      ${showUpload&&q.status!=='ready'?`
+        <div id="qr-drop-${q.id}" ondrop="handleQReqDrop(event,'${q.id}','${q.deal_id}')"
+          ondragover="event.preventDefault();this.style.borderColor='var(--green)';this.style.background='var(--green-lt)'"
+          ondragleave="this.style.borderColor='#DCDCD2';this.style.background='#fff'"
+          onclick="el('qr-inp-${q.id}').click()"
+          style="border:2px dashed #DCDCD2;border-radius:8px;padding:16px;text-align:center;cursor:pointer;margin-top:8px;transition:all .2s;font-size:13px">
+          📎 Drag &amp; drop completed quotation PDF here, or click to browse
+          <input type="file" id="qr-inp-${q.id}" accept=".pdf" style="display:none" onchange="handleQReqFile(event,'${q.id}','${q.deal_id}')">
+        </div>
+        <div id="qr-prog-${q.id}"></div>`:''}
+      ${q.status==='ready'&&q.doc_id?`<div style="margin-top:6px;font-size:12px;color:var(--green)">✓ PDF uploaded and saved to client docs</div>`:''}
+    </div>`;
+  };
+
+  return`<div class="section-title" style="margin-bottom:4px">Quotations</div>
+  <div class="sub" style="margin-bottom:16px">${isEst?'Your quotation queue — drag and drop the completed PDF onto each request when done.':'All quotation requests across all deals.'}</div>
+
+  ${pending.length?`<div style="margin-bottom:20px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--red);margin-bottom:10px">⏳ Pending (${pending.length})</div>
+    ${pending.map(q=>mkCard(q,isEst)).join('')}
+  </div>`:''}
+
+  ${inprog.length?`<div style="margin-bottom:20px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--amber);margin-bottom:10px">🔧 In progress (${inprog.length})</div>
+    ${inprog.map(q=>mkCard(q,isEst)).join('')}
+  </div>`:''}
+
+  ${ready.length?`<div style="margin-bottom:20px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--green);margin-bottom:10px">✓ Ready (${ready.length})</div>
+    ${ready.map(q=>mkCard(q,false)).join('')}
+  </div>`:''}
+
+  ${!QUOTE_REQS.length?`<div class="empty" style="margin-top:40px">No quotation requests yet. Sales Agents submit requests from the Docs tab inside each deal.</div>`:''}`;
+}
+
+async function updateQReqStatus(id,status){
+  await db.updateQuoteReq(id,{status});
+  await loadAll();render();
+}
+
+async function handleQReqDrop(event,reqId,dealId){
+  event.preventDefault();
+  const file=[...event.dataTransfer.files][0];
+  if(file)await uploadQReqPDF(file,reqId,dealId);
+}
+async function handleQReqFile(event,reqId,dealId){
+  const file=event.target.files[0];
+  if(file)await uploadQReqPDF(file,reqId,dealId);
+}
+async function uploadQReqPDF(file,reqId,dealId){
+  const prog=el('qr-prog-'+reqId);
+  if(prog)prog.innerHTML=`<div class="notice" style="margin-top:6px">⬆ Uploading ${esc(file.name)}…</div>`;
+  const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  const path=`${dealId}/quotations/${Date.now()}_${safeName}`;
+  const {error}=await sb.storage.from('deal-docs').upload(path,file,{upsert:false});
+  if(error){
+    if(prog)prog.innerHTML=`<div class="notice" style="background:var(--red-lt);margin-top:6px">Error: ${esc(error.message)}</div>`;
+    return;
+  }
+  // Save to crm_documents
+  const {data:doc}=await db.addDoc({deal_id:dealId,type:'Quotation',name:file.name,link:'',filed_by:PROFILE.name,storage_path:path});
+  // Mark request as ready and link the doc
+  await db.updateQuoteReq(reqId,{status:'ready',doc_id:doc?.id||null});
+  // Notify SA via activity log
+  const deal=DEALS.find(d=>d.id===dealId);
+  await db.addActivity({deal_id:dealId,type:'Quotation ready',note:`Quotation "${file.name}" uploaded by ${PROFILE.name} — ready for client.`,by_name:PROFILE.name});
+  if(prog)prog.innerHTML='';
+  await loadAll();render();
+}
+
 // ── TEAM ──
 function buildTeam(){
-  const ROLES=['Scaled Sales','Sales Agent','Sales Head'];
+  const ROLES=['Lead Gen','Sales Agent','Estimator','Sales Head'];
   return`<div class="section-title">Team</div>
   <div class="sub" style="margin-bottom:14px">Set each member's role and territory. New accounts default to "Sales Agent".</div>
-  <div class="notice" style="margin-bottom:14px"><b>Roles:</b> Scaled Sales — works the lead funnel. Sales Agent — owns deals from handoff to close. Sales Head — full access, KPIs, team management.</div>
+  <div class="notice" style="margin-bottom:14px"><b>Roles:</b> Lead Gen — works the lead funnel. Sales Agent — owns deals from handoff to close. Estimator — receives quotation requests and uploads completed PDFs. Sales Head — full access, KPIs, team management.</div>
   <div class="card">
     <table>
       <thead><tr><th>Name</th><th>Role</th><th>Territory</th><th>Quarter target (PHP)</th></tr></thead>
@@ -1447,7 +1632,7 @@ const COMPANY_RULES=`Prime Agritech Corporation sells poultry farm construction 
 STANDARD TERMS: 21-day validity (building), 2-month (equipment). Payment: 50% DP + 25% PDC 30d before delivery + 25% PDC 7d before delivery. Equipment: 50/30/20. Lead time 8-10 weeks building. Installation 30-45 days. Cancellation 25%.
 EXCLUDED: civil works, electrical, water/plumbing/gas, unloading manpower, double-handling.
 PRICING AUTHORITY: 0-3% Sales Head; 3-7% GM; above 7% = GM in writing.
-PIPELINE: Scaled Sales (Untouched→Profile collected) → handoff → Sales Agent (Evaluation→Closed Sale). KPI clock starts at handoff.
+PIPELINE: Lead Gen (Untouched→Profile collected) → handoff → Sales Agent (Evaluation→Closed Sale). KPI clock starts at handoff.
 GATES (all 4 before site inspection): Land, Money, Market, Timeline.`;
 
 function playbookCtx(){
