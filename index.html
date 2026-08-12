@@ -464,12 +464,12 @@ function buildPipe(){
   const saDeals=filt(allOpen.filter(d=>SA_STAGES.includes(d.stage)));
   const stgOpts='<option value="">All stages</option>'+SA_STAGES.map(s=>`<option ${PIPE_STAGE===s?'selected':''}>${s}</option>`).join('');
   const SA_DEFS={
-    'Evaluation':'Confirm all 4 gates: Land, Money, Market, Timeline',
-    'Qualified':'Gates confirmed — book site inspection',
-    'Site Inspection':'Visit farm site — file report within 24hrs',
-    'Proposal':'Present quotation in person or video call',
-    'Bidding / Negotiation':'Active back-and-forth on price or terms',
-    'Committed':'Verbal yes — collect signatures and PDCs',
+    'Evaluation':'Land acquired? Financing path clear? Market identified? Timeline realistic?',
+    'Qualified':'Gates confirmed — conduct site visit and build quotation',
+    'Site Inspection':'Visit site — measure, assess access, document. Build quotation for bank submission.',
+    'Proposal':'Present quotation — client submits to bank or confirms own funds',
+    'Bidding / Negotiation':'Active back-and-forth on scope, price, or terms',
+    'Committed':'Verbal yes — waiting on bank approval or final confirmation. Collect signatures and PDCs.',
     'Closed Sale':'Signed pro-forma, cleared DP, PDCs collected',
   };
   const cols=SA_STAGES.map(st=>{
@@ -571,9 +571,18 @@ function buildDealModal(){
       <div><label>Email</label><input id="f_email" value="${esc(d?.email||'')}"></div>
       <div><label>Target date</label><input type="date" id="f_td" value="${d?.target_date||''}"></div>
       <div><label>Travel budget (PHP)</label><input type="number" id="f_tb" value="${d?.travel_budget||0}"></div>
-      <div class="full"><label>Gates — all 4 before site inspection</label>
+      <div class="full"><label>Gates — qualify before site inspection</label>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
-          ${['land','money','market','timeline'].map(k=>`<label style="display:flex;align-items:center;gap:6px;background:#F4F4EC;padding:7px 10px;border-radius:7px;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0"><input type="checkbox" id="g_${k}" ${g[k]?'checked':''} style="width:auto"> ${k.charAt(0).toUpperCase()+k.slice(1)}</label>`).join('')}
+          <label style="display:flex;align-items:center;gap:6px;background:#F4F4EC;padding:7px 10px;border-radius:7px;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0" title="Land acquired or controlled — 40-ft truck access confirmed"><input type="checkbox" id="g_land" ${g.land?'checked':''} style="width:auto"> 🏡 Land acquired</label>
+          <label style="display:flex;align-items:center;gap:6px;background:#F4F4EC;padding:7px 10px;border-radius:7px;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0" title="Client understands they need our quotation to apply for bank financing — loan application in process or own funds confirmed"><input type="checkbox" id="g_money" ${g.money?'checked':''} style="width:auto"> 🏦 Financing plan clear</label>
+          <label style="display:flex;align-items:center;gap:6px;background:#F4F4EC;padding:7px 10px;border-radius:7px;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0" title="Has an integrator contract (contract growing) OR identified as independent commercial farm with own offtake plan"><input type="checkbox" id="g_market" ${g.market?'checked':''} style="width:auto"> 🐔 Market identified</label>
+          <label style="display:flex;align-items:center;gap:6px;background:#F4F4EC;padding:7px 10px;border-radius:7px;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0" title="Client's target operational date is realistic vs 8–10 week building lead time and 12–14 week equipment lead time"><input type="checkbox" id="g_timeline" ${g.timeline?'checked':''} style="width:auto"> 📅 Timeline realistic</label>
+        </div>
+        <div style="margin-top:8px;background:#F4F4EC;border-radius:7px;padding:8px 10px;font-size:11px;color:var(--steel);line-height:1.6">
+          <b>🏡 Land</b> — Site must be acquired or controlled. 40-ft container truck access required.<br>
+          <b>🏦 Financing</b> — Client needs our quotation to submit to the bank. Proceed to site visit so we can build the quotation. Bank loan in process OR own funds confirmed.<br>
+          <b>🐔 Market</b> — Contract growing agreement with integrator (Bounty Agro, San Miguel, etc.) OR independent commercial farm with own buyers/offtake plan.<br>
+          <b>📅 Timeline</b> — Building: 8–10 weeks lead time. Equipment: 12–14 weeks. Civil works must run in parallel.
         </div></div>
       <div><label>Next action</label><input id="f_na" value="${esc(d?.next_action||'')}"></div>
       <div><label>Next action date</label><input type="date" id="f_nad" value="${d?.next_action_date||''}"></div>
@@ -689,6 +698,65 @@ function buildDealModal(){
   </div></div>`;
 }
 
+// ── AUTO TASK CREATION ──
+// Rules:
+//   1. If next action + date are set on a deal → create a task for that action on that date
+//   2. Every SA-stage open deal → ensure a "Follow-up call" task exists within the next 14 days
+//      (skip if one already exists for this deal due within 14 days)
+const FOLLOWUP_STAGES=['Evaluation','Qualified','Site Inspection','Proposal','Bidding / Negotiation','Committed'];
+
+async function autoCreateTasks(dealId, deal, assigneeId, nextAction, nextActionDate){
+  const promises=[];
+
+  // Rule 1: next action task
+  if(nextAction?.trim() && nextActionDate){
+    // Check if a task for this deal with same title and date already exists
+    const exists=TASKS.some(t=>t.deal_id===dealId&&t.title===nextAction&&t.due===nextActionDate&&t.status==='open');
+    if(!exists){
+      promises.push(db.upsertTask({
+        title: nextAction,
+        type: nextAction.toLowerCase().includes('visit')||nextAction.toLowerCase().includes('inspect')?'Site visit'
+              :nextAction.toLowerCase().includes('quote')||nextAction.toLowerCase().includes('proposal')?'Send quotation'
+              :'Call',
+        due: nextActionDate,
+        assignee_id: assigneeId||null,
+        deal_id: dealId,
+        notes: `Auto-created from deal: ${deal?.client||''}`,
+        created_by: PROFILE.id,
+        status: 'open'
+      }));
+    }
+  }
+
+  // Rule 2: 2-week follow-up call for SA stages
+  if(FOLLOWUP_STAGES.includes(deal?.stage||'')){
+    const twoWeeksOut=new Date();twoWeeksOut.setDate(twoWeeksOut.getDate()+14);
+    const twoWeeksStr=twoWeeksOut.toISOString().slice(0,10);
+    // Check if an open follow-up call task for this deal exists within next 14 days
+    const hasFollowup=TASKS.some(t=>
+      t.deal_id===dealId &&
+      t.status==='open' &&
+      (t.type==='Call'||t.title?.toLowerCase().includes('follow-up call')) &&
+      t.due && t.due<=twoWeeksStr
+    );
+    if(!hasFollowup){
+      // Schedule 2 weeks from today
+      promises.push(db.upsertTask({
+        title: `Follow-up call — ${deal?.client||''}`,
+        type: 'Call',
+        due: twoWeeksStr,
+        assignee_id: assigneeId||null,
+        deal_id: dealId,
+        notes: 'Auto-scheduled: 2-week follow-up call for pipeline update',
+        created_by: PROFILE.id,
+        status: 'open'
+      }));
+    }
+  }
+
+  await Promise.all(promises);
+}
+
 async function saveDeal(id){
   const v=k=>el(k)?.value;
   if(!v('f_client')?.trim()){alert('Client name is required.');return;}
@@ -697,19 +765,25 @@ async function saveDeal(id){
   const sh=[...(deal?.stage_history||[])];
   if(deal&&deal.stage!==stage)sh.push({stage,date:today()});
   const gates={land:el('g_land')?.checked||false,money:el('g_money')?.checked||false,market:el('g_market')?.checked||false,timeline:el('g_timeline')?.checked||false};
+  const assigneeId=v('f_sp')||deal?.sa_agent_id||null;
+  const nextAction=v('f_na');
+  const nextActionDate=v('f_nad')||null;
   const payload={
     ...(id?{id}:{}),
     client:v('f_client'),farm:v('f_farm'),location:v('f_loc'),value:+v('f_val')||0,
-    ss_agent_id:v('f_ssag')||null,sa_agent_id:v('f_sp')||null,
+    ss_agent_id:v('f_ssag')||null,sa_agent_id:assigneeId,
     source:v('f_src'),scope:v('f_scope'),farm_type:v('f_ft'),house_model:v('f_hm'),num_bldgs:+v('f_nb')||1,
     stage,substage:v('f_ss')||'untouched',gates,
-    next_action:v('f_na'),next_action_date:v('f_nad')||null,
+    next_action:nextAction,next_action_date:nextActionDate,
     target_date:v('f_td')||null,travel_budget:+v('f_tb')||0,
     contact:v('f_contact'),email:v('f_email'),reqs:v('f_reqs'),
     stage_history:sh,milestones:deal?.milestones||{},
     updated_at:new Date().toISOString()
   };
-  await db.upsertDeal(payload);
+  const {data:saved}=await db.upsertDeal(payload);
+  const dealId=saved?.id||id;
+  const mergedDeal={...payload,stage};
+  if(dealId)await autoCreateTasks(dealId,mergedDeal,assigneeId,nextAction,nextActionDate);
   await loadAll();closeModal();
 }
 async function markWon(id){
@@ -828,6 +902,9 @@ async function doHandoff(dealId){
     handoff:{date:today(),ss_agent:PROFILE.name,sa_agent_id:saId,meeting_date:mtg,client_info:info},
     stage_history:sh,updated_at:new Date().toISOString()});
   await db.addActivity({deal_id:dealId,type:'Handoff',note:'Lead handed off to '+userName(saId)+'. KPI clock starts.',by_name:PROFILE.name});
+  // Auto-create first follow-up call and intro meeting task for the SA
+  const hDeal={...d,stage:'Evaluation',sa_agent_id:saId};
+  await autoCreateTasks(dealId,hDeal,saId,`Intro meeting with ${d?.client||'client'}`,mtg);
   await loadAll();closeModal();
 }
 
@@ -947,7 +1024,10 @@ function buildTasks(){
   };
   return`<div class="row" style="justify-content:space-between;margin-bottom:12px">
     <div class="section-title" style="margin:0">Tasks</div>
-    <button class="btn" onclick="editTask(null)">+ Add task</button></div>
+    <div class="row" style="gap:8px">
+      <button class="btn sec sm" onclick="seedFollowups()" title="Create 2-week follow-up call tasks for all open SA-stage deals that don't have one yet">↻ Seed follow-up calls</button>
+      <button class="btn" onclick="editTask(null)">+ Add task</button>
+    </div></div>
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
     <div style="background:#EDEDE5;border-radius:var(--r);padding:10px">
       <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--red);font-weight:700;margin-bottom:10px">Overdue (${overdue.length})</div>
@@ -994,6 +1074,36 @@ async function saveTask(id){
 }
 async function toggleTask(id,done){await db.upsertTask({id,status:done?'done':'open'});await loadAll();render();}
 async function deleteTask(id){if(!confirm('Delete?'))return;await db.deleteTask(id);await loadAll();render();}
+async function seedFollowups(){
+  const openSADeals=DEALS.filter(d=>d.status==='open'&&FOLLOWUP_STAGES.includes(d.stage));
+  if(!openSADeals.length){alert('No open SA-stage deals found.');return;}
+  let created=0;
+  for(const d of openSADeals){
+    const assigneeId=d.sa_agent_id||null;
+    const twoWeeksOut=new Date();twoWeeksOut.setDate(twoWeeksOut.getDate()+14);
+    const twoWeeksStr=twoWeeksOut.toISOString().slice(0,10);
+    const hasFollowup=TASKS.some(t=>
+      t.deal_id===d.id&&t.status==='open'&&
+      (t.type==='Call'||t.title?.toLowerCase().includes('follow-up call'))&&
+      t.due&&t.due<=twoWeeksStr
+    );
+    if(!hasFollowup){
+      await db.upsertTask({
+        title:`Follow-up call — ${d.client}`,
+        type:'Call',
+        due:twoWeeksStr,
+        assignee_id:assigneeId,
+        deal_id:d.id,
+        notes:'Auto-scheduled: 2-week follow-up call for pipeline update',
+        created_by:PROFILE.id,
+        status:'open'
+      });
+      created++;
+    }
+  }
+  await loadAll();render();
+  alert(`Done — created ${created} follow-up call task${created!==1?'s':''} for ${openSADeals.length} open deals.`);
+}
 
 // ── TRAVEL ──
 function buildTravel(){
@@ -1130,60 +1240,185 @@ function buildKPI(){
   const mStart=new Date(now.getFullYear(),now.getMonth(),1);
   const cutoff=(KPI_PERIOD==='month'?mStart:qStart).toISOString().slice(0,10);
   const label=KPI_PERIOD==='month'?now.toLocaleDateString('en-PH',{month:'long',year:'numeric'}):'Q'+(Math.floor(now.getMonth()/3)+1)+' '+now.getFullYear();
-  function ssKpi(u){
-    const mine=DEALS.filter(d=>d.ss_agent_id===u.id);
-    const entered=mine.filter(d=>(d.stage_history||[])[0]?.date>=cutoff);
-    const handoffs=mine.filter(d=>d.handoff?.date>=cutoff);
-    const meetings=mine.filter(d=>['meeting_booked','profile_done'].includes(d.substage||'')&&(d.stage_history||[])[0]?.date>=cutoff);
-    return{entered:entered.length,meetings:meetings.length,handoffs:handoffs.length,rate:entered.length?Math.round(handoffs.length/entered.length*100):0};
-  }
+  const Bar=(pct,warn=75)=>`<div class="kpi-bar" style="margin:4px 0 6px"><div class="kpi-bar-fill${pct<warn?' warn':''}" style="width:${Math.min(pct,100)}%"></div></div>`;
+  const Score=(val,label,sub,pct,warn)=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px"><span style="color:var(--steel)">${label}</span><b>${val}</b></div>
+    ${sub?`<div class="sub" style="font-size:11px;margin-top:1px">${sub}</div>`:''}
+    ${pct!==undefined?Bar(pct,warn):''}
+  </div>`;
+  const Section=(title,color,rows)=>`<div style="margin-bottom:12px">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:${color};margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid ${color}">${title}</div>
+    ${rows}
+  </div>`;
+
+  // ── SA KPIs ──
   function saKpi(u){
-    const mine=DEALS.filter(d=>d.sa_agent_id===u.id&&(d.handoff?.date||'')>=cutoff);
+    const openDeals=DEALS.filter(d=>d.sa_agent_id===u.id&&d.status==='open'&&SA_STAGES.includes(d.stage));
+
+    // KPI 1: Follow-up calls completed on schedule
+    // Done = call tasks linked to their deals marked done in period
+    // Missed = call tasks linked to their deals overdue / missed in period
+    const callTasks=TASKS.filter(t=>t.assignee_id===u.id&&t.type==='Call'&&t.deal_id&&(t.due||'')>=cutoff);
+    const callsDone=callTasks.filter(t=>t.status==='done').length;
+    const callsMissed=callTasks.filter(t=>t.status==='open'&&t.due&&t.due<today()).length;
+    const callsTotal=callsDone+callsMissed;
+    const callRate=callsTotal?Math.round(callsDone/callsTotal*100):null;
+
+    // KPI 2: Visit reports within 24hrs
+    // We track: reports filed per deal vs visits in period
+    // Approximation: visit reports filed in period for their deals
+    // "On time" = report filed same day or next day as the appointment
+    const theirAppts=APPTS.filter(a=>a.user_id===u.id&&(a.date||'')>=cutoff&&a.status==='done');
+    // We compare appointment count vs reports filed in same window
+    // Reports filed in period
+    const rptDeals=openDeals.concat(DEALS.filter(d=>d.sa_agent_id===u.id&&d.status!=='open'));
+    // Simple: count reports in period vs done appointments in period
+    const visitsCount=theirAppts.length;
+    // We can't directly link appts to reports without extra data, so show both counts
+    // and let the SH judge compliance
+
+    // KPI 3: Next action coverage
+    // % of open deals that have a next action set
+    const withNA=openDeals.filter(d=>d.next_action?.trim()).length;
+    const naRate=openDeals.length?Math.round(withNA/openDeals.length*100):null;
+
+    // KPI 4: Travel spend per stage move
+    // Travel spend = sum of visit report costs in period for their deals
+    // Stage moves = count of stage_history entries in period across their deals
+    const dealIds=new Set([...openDeals,...DEALS.filter(d=>d.sa_agent_id===u.id)].map(d=>d.id));
+    // We'll compute from deals stage_history
+    const stageMoves=DEALS.filter(d=>d.sa_agent_id===u.id)
+      .reduce((a,d)=>a+(d.stage_history||[]).filter(h=>h.date>=cutoff).length,0);
+    // Travel spend: sum of est_cost from approved travel requests
+    const travelSpend=TRAVEL.filter(t=>t.requester_id===u.id&&t.status==='approved'&&(t.date||'')>=cutoff)
+      .reduce((a,t)=>a+(+t.est_cost||0),0);
+    const spendPerMove=stageMoves?Math.round(travelSpend/stageMoves):null;
+
+    // Goals (separate)
     const won=DEALS.filter(d=>d.sa_agent_id===u.id&&d.status==='won'&&(d.won_date||'')>=cutoff);
     const wonVal=won.reduce((a,d)=>a+(+d.value||0),0);
     const target=+u.quarter_target||0;
-    const openD=DEALS.filter(d=>d.sa_agent_id===u.id&&d.status==='open');
-    const pipeVal=openD.reduce((a,d)=>a+(+d.value||0),0);
-    const proposals=mine.filter(d=>(d.stage_history||[]).some(h=>h.stage==='Proposal'&&h.date>=cutoff));
-    const inspections=mine.filter(d=>(d.stage_history||[]).some(h=>h.stage==='Site Inspection'&&h.date>=cutoff));
-    const flagged=openD.filter(d=>dealDays(d)>(SA_FLAGS[d.stage]||14)).length;
-    const noNA=openD.filter(d=>!d.next_action).length;
-    return{received:mine.length,inspections:inspections.length,proposals:proposals.length,won:won.length,wonVal,target,att:target?Math.round(wonVal/target*100):0,pipeVal,pipeRatio:target?+(pipeVal/target).toFixed(1):null,flagged,noNA};
+    const att=target?Math.round(wonVal/target*100):null;
+    const pipeVal=openDeals.reduce((a,d)=>a+(+d.value||0),0);
+    const pipeRatio=target?+(pipeVal/target).toFixed(1):null;
+
+    return{openDeals:openDeals.length,callsDone,callsMissed,callsTotal,callRate,visitsCount,naRate,withNA,noNA:openDeals.length-withNA,travelSpend,stageMoves,spendPerMove,won:won.length,wonVal,target,att,pipeVal,pipeRatio};
   }
-  const Bar=pct=>`<div class="kpi-bar"><div class="kpi-bar-fill ${pct<75?'warn':''}" style="width:${Math.min(pct,100)}%"></div></div>`;
+
+  // ── SS KPIs ──
+  function ssKpi(u){
+    const mine=DEALS.filter(d=>d.ss_agent_id===u.id);
+
+    // Leads introduced = substage moved past untouched in period
+    const introduced=mine.filter(d=>{
+      const first=(d.stage_history||[])[0]?.date||d.created_at?.slice(0,10)||'';
+      return first>=cutoff&&(d.substage||'untouched')!=='untouched';
+    }).length;
+
+    // Calls / touchpoints = call tasks done by this user in period (SS agents use tasks too)
+    const callsDone=TASKS.filter(t=>t.assignee_id===u.id&&t.type==='Call'&&t.status==='done'&&(t.due||'')>=cutoff).length;
+
+    // Meetings booked = deals that reached meeting_booked or profile_done substage in period
+    const meetings=mine.filter(d=>['meeting_booked','profile_done'].includes(d.substage||'')&&
+      (d.stage_history||[])[0]?.date>=cutoff).length;
+
+    // Profiles collected and handed off
+    const handoffs=mine.filter(d=>d.handoff?.date>=cutoff).length;
+    const assigned=mine.filter(d=>{
+      const first=(d.stage_history||[])[0]?.date||d.created_at?.slice(0,10)||'';
+      return first>=cutoff;
+    }).length;
+    const handoffRate=assigned?Math.round(handoffs/assigned*100):null;
+
+    return{introduced,callsDone,meetings,handoffs,assigned,handoffRate};
+  }
+
   const ssAgents=USERS.filter(u=>u.role==='Scaled Sales');
   const saAgents=USERS.filter(u=>u.role==='Sales Agent');
-  return`<div class="row" style="justify-content:space-between;margin-bottom:12px">
-    <div class="section-title" style="margin:0">KPIs — ${label}</div>
+
+  const saCards=saAgents.map(u=>{
+    const v=saKpi(u);
+    return`<div class="kpiscard">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <div>
+          <div style="font-weight:700;font-size:14px">${esc(u.name)}</div>
+          <div><span class="role-sa">Sales Agent</span>${u.territory?` <span class="sub">— ${esc(u.territory)}</span>`:''}</div>
+        </div>
+      </div>
+
+      ${Section('Behavior KPIs — what the agent controls','var(--blue)',`
+        ${Score(
+          v.callRate!==null?`${v.callsDone} done · ${v.callsMissed} missed (${v.callRate}%)`:'No call tasks yet',
+          'Follow-up calls on schedule',
+          'Call tasks completed vs overdue for their deals',
+          v.callRate,70
+        )}
+        ${Score(
+          v.visitsCount?`${v.visitsCount} visits done`:'No visits logged',
+          'Visits completed this period',
+          'Appointments marked done — compare vs visit reports filed'
+        )}
+        ${Score(
+          v.naRate!==null?`${v.withNA} of ${v.openDeals} deals (${v.naRate}%)`:'No open deals',
+          'Next action coverage',
+          v.noNA>0?`⚠ ${v.noNA} deal${v.noNA>1?'s':''} have no next action set`:'All deals have a next action set',
+          v.naRate,90
+        )}
+        ${Score(
+          v.spendPerMove!==null?`${peso(v.spendPerMove)} per stage move`:`${peso(v.travelSpend)} spent · ${v.stageMoves} stage moves`,
+          'Travel spend efficiency',
+          'Approved travel cost ÷ stage advances this period'
+        )}
+      `)}
+
+      ${Section('Goals — outcomes','var(--green)',`
+        ${Score(`${v.won} deals · ${peso(v.wonVal)}${v.target?` of ${peso(v.target)}`:''}`,'Closed this period',
+          v.att!==null?`${v.att}% of quarterly target`:null,v.att||0)}
+        ${Score(v.pipeRatio!==null?`${v.pipeRatio}× target (${peso(v.pipeVal)})`:peso(v.pipeVal),
+          'Pipeline coverage','Target: 3–4× quarterly goal',
+          v.pipeRatio?Math.min(v.pipeRatio/4*100,100):0,75)}
+      `)}
+    </div>`;
+  }).join('')||'<div class="empty">No Sales Agents configured in Team yet.</div>';
+
+  const ssCards=ssAgents.map(u=>{
+    const v=ssKpi(u);
+    return`<div class="kpiscard">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <div>
+          <div style="font-weight:700;font-size:14px">${esc(u.name)}</div>
+          <span class="role-ss">Scaled Sales</span>
+        </div>
+      </div>
+
+      ${Section('Behavior KPIs — what the agent controls','var(--amber)',`
+        ${Score(v.introduced,'Leads introduced this period','Leads that moved past Untouched')}
+        ${Score(v.callsDone,'Calls / touchpoints completed','Call tasks marked done in period')}
+        ${Score(v.meetings,'Meetings booked','Deals that reached Meeting Booked or Profile Collected')}
+        ${Score(`${v.handoffs} handed off`+(v.assigned?` of ${v.assigned} assigned`:''),'Profiles collected & handed off',
+          v.handoffRate!==null?`${v.handoffRate}% handoff rate`:null,
+          v.handoffRate||0,60)}
+      `)}
+    </div>`;
+  }).join('')||'<div class="empty">No Scaled Sales agents configured in Team yet.</div>';
+
+  return`<div class="row" style="justify-content:space-between;margin-bottom:16px">
+    <div class="section-title" style="margin:0">KPIs & Goals — ${label}</div>
     <div class="row">
-      <select onchange="KPI_PERIOD=this.value;render()" style="width:auto"><option value="quarter" ${KPI_PERIOD==='quarter'?'selected':''}>This quarter</option><option value="month" ${KPI_PERIOD==='month'?'selected':''}>This month</option></select>
+      <select onchange="KPI_PERIOD=this.value;render()" style="width:auto">
+        <option value="quarter" ${KPI_PERIOD==='quarter'?'selected':''}>This quarter</option>
+        <option value="month" ${KPI_PERIOD==='month'?'selected':''}>This month</option>
+      </select>
       <div style="background:#EDEDE5;border-radius:8px;padding:3px;display:flex;gap:2px">
         <button class="btn sm ${KPI_VIEW==='sa'?'':'sec'}" style="${KPI_VIEW==='sa'?'':'background:transparent;border:none'}" onclick="KPI_VIEW='sa';render()">Sales Agents</button>
         <button class="btn sm ${KPI_VIEW==='ss'?'':'sec'}" style="${KPI_VIEW==='ss'?'':'background:transparent;border:none'}" onclick="KPI_VIEW='ss';render()">Scaled Sales</button>
       </div>
-    </div></div>
-  <div class="notice" style="margin-bottom:14px"><b>Sales Agent KPIs start from handoff date.</b> Pipeline coverage target: 3–4× quarterly target.</div>
-  <div class="kpiscore">
-    ${KPI_VIEW==='sa'?saAgents.map(u=>{const v=saKpi(u);return`<div class="kpiscard">
-      <h4 style="font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px">${esc(u.name)} <span class="role-sa">Sales Agent — ${esc(u.territory)}</span></h4>
-      <div class="krow"><span>Leads received</span><b>${v.received}</b></div>
-      <div class="krow"><span>Inspections</span><b>${v.inspections}</b></div>
-      <div class="krow"><span>Proposals presented</span><b>${v.proposals}</b></div>
-      <div class="krow"><span>Closed (won)</span><b>${v.won} · ${peso(v.wonVal)}</b></div>
-      ${v.target?`<div class="krow"><span>Attainment</span><b>${v.att}%</b></div>${Bar(v.att)}`:''}
-      <div class="krow"><span>Pipeline coverage</span><b>${v.pipeRatio!==null?v.pipeRatio+'× target':peso(v.pipeVal)}</b></div>
-      ${v.flagged?`<div class="krow" style="color:var(--red)"><span>⚠ Flagged deals</span><b>${v.flagged}</b></div>`:''}
-      ${v.noNA?`<div class="krow" style="color:var(--amber)"><span>No next action</span><b>${v.noNA}</b></div>`:''}
-    </div>`}).join('')||'<div class="empty">No Sales Agents in Team yet.</div>'
-    :ssAgents.map(u=>{const v=ssKpi(u);return`<div class="kpiscard">
-      <h4 style="font-size:13px;margin-bottom:10px;display:flex;align-items:center;gap:8px">${esc(u.name)} <span class="role-ss">Scaled Sales</span></h4>
-      <div class="krow"><span>Leads received</span><b>${v.entered}</b></div>
-      <div class="krow"><span>Meetings booked</span><b>${v.meetings}</b></div>
-      <div class="krow"><span>Handed off to SA</span><b>${v.handoffs}</b></div>
-      <div class="krow"><span>Lead → handoff rate</span><b>${v.rate}%</b></div>
-      ${Bar(v.rate)}
-    </div>`}).join('')||'<div class="empty">No Scaled Sales agents in Team yet.</div>'}
-  </div>`;
+    </div>
+  </div>
+  <div class="notice" style="margin-bottom:16px">
+    <b>KPIs = behaviors the agent controls.</b> Goals = outcomes. An agent can miss goal due to market conditions — but missed KPIs are always a coaching conversation.
+  </div>
+  <div class="kpiscore">${KPI_VIEW==='sa'?saCards:ssCards}</div>`;
 }
 
 // ── TEAM ──
