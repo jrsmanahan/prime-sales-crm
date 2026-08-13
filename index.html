@@ -638,7 +638,7 @@ function buildDealModal(){
     const dqr=DEAL_DATA.quoteReqs||[];
     const pendingBadge=dqr.filter(q=>q.status==='pending'||q.status==='in_progress').length;
     const qrRows=dqr.map(q=>{
-      const statusChip=q.status==='ready'?'<span class="chip g">✓ Ready</span>':q.status==='in_progress'?'<span class="chip a">In progress</span>':'<span class="chip n">Pending</span>';
+      const statusChip=q.status==='quotation_submitted'?'<span class="chip g">✓ Submitted</span>':q.status==='for_review'?'<span class="chip b">For review</span>':q.status==='awaiting_suppliers'?'<span class="chip a">Awaiting suppliers</span>':q.status==='in_progress'?'<span class="chip b">In progress</span>':'<span class="chip n">Pending</span>';
       return`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${q.status==='ready'?'var(--green-lt)':q.status==='in_progress'?'var(--amber-lt)':'#F4F4EC'};margin-bottom:6px;font-size:13px">
         <div style="flex:1">
           <div style="font-weight:600">${esc(q.house_model||d.house_model||'')} · ${q.num_bldgs||d.num_bldgs||1} building${(q.num_bldgs||1)>1?'s':''}</div>
@@ -1466,6 +1466,7 @@ function showQuoteReqForm(dealId){
     <div class="grid2">
       <div><label>House model</label><input id="qrf_hm" value="${esc(d?.house_model||'')}" placeholder="e.g. CCS3 16x144"></div>
       <div><label>No. of buildings</label><input type="number" id="qrf_nb" value="${d?.num_bldgs||1}" min="1"></div>
+      <div><label>Deadline needed by</label><input type="date" id="qrf_deadline"></div>
       <div><label>Scope</label><select id="qrf_scope">${SCOPES.map(s=>`<option ${(d?.scope||'')=== s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div><label>Assign to</label><select id="qrf_est">${estOpts}</select></div>
       <div class="full"><label>Special requirements / site notes</label><textarea id="qrf_notes" rows="3" placeholder="Access issues, special dimensions, client requests, bank requirements…"></textarea></div>
@@ -1487,6 +1488,7 @@ async function submitQuoteReq(dealId){
     house_model:v('qrf_hm'),
     num_bldgs:+v('qrf_nb')||1,
     special_notes:v('qrf_notes'),
+    deadline:v('qrf_deadline')||null,
     status:'pending'
   };
   await db.addQuoteReq(payload);
@@ -1515,57 +1517,85 @@ async function submitQuoteReq(dealId){
 function buildQuotes(){
   const role=PROFILE.role;
   const isEst=role==='Estimator';
+  const QSTATUS={
+    pending:       {label:'Pending',        color:'var(--steel)', chip:'n'},
+    in_progress:   {label:'In progress',    color:'var(--blue)',  chip:'b'},
+    awaiting_suppliers:{label:'Awaiting suppliers',color:'var(--amber)',chip:'a'},
+    for_review:    {label:'For review',     color:'#7B3FA0',      chip:'b'},
+    quotation_submitted:{label:'Quotation submitted',color:'var(--green)',chip:'g'},
+  };
+  const statusOpts=Object.entries(QSTATUS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('');
+  const allGroups=Object.entries(QSTATUS);
   const pending=QUOTE_REQS.filter(q=>q.status==='pending');
   const inprog=QUOTE_REQS.filter(q=>q.status==='in_progress');
-  const ready=QUOTE_REQS.filter(q=>q.status==='ready');
+  const awaiting=QUOTE_REQS.filter(q=>q.status==='awaiting_suppliers');
+  const forReview=QUOTE_REQS.filter(q=>q.status==='for_review');
+  const submitted=QUOTE_REQS.filter(q=>q.status==='quotation_submitted');
 
   const mkCard=(q,showUpload)=>{
     const deal=q.crm_deals;
     const sa=USERS.find(u=>u.id===deal?.sa_agent_id);
-    return`<div style="background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-        <div>
+    const st=QSTATUS[q.status]||QSTATUS.pending;
+    const isOverdue=q.deadline&&q.deadline<today()&&q.status!=='quotation_submitted';
+    const isDueSoon=q.deadline&&!isOverdue&&q.deadline<=new Date(Date.now()+3*86400000).toISOString().slice(0,10)&&q.status!=='quotation_submitted';
+    return`<div style="background:#fff;border:1px solid ${isOverdue?'var(--red)':isDueSoon?'var(--amber)':'var(--line)'};border-left:4px solid ${st.color};border-radius:var(--r);padding:14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:14px">${esc(deal?.client||'—')} <span class="sub">· ${esc(deal?.farm||'')} · ${esc(deal?.location||'')}</span></div>
-          <div class="sub">${esc(q.house_model||'')} · ${q.num_bldgs||1} building${(q.num_bldgs||1)>1?'s':''} · ${esc(q.scope||'')}</div>
+          <div class="sub">${esc(q.house_model||'')} · ${q.num_bldgs||1} bldg${(q.num_bldgs||1)>1?'s':''} · ${esc(q.scope||'')}</div>
           ${q.special_notes?`<div class="sub" style="margin-top:2px">📝 ${esc(q.special_notes)}</div>`:''}
-          <div class="sub" style="margin-top:4px">Requested by ${esc(q.crm_users?.name||'—')} · ${q.created_at?.slice(0,10)}${sa?' · SA: '+esc(sa.name):''}</div>
+          <div class="sub" style="margin-top:4px">
+            Requested by ${esc(q.crm_users?.name||'—')} · ${q.created_at?.slice(0,10)}
+            ${sa?' · SA: '+esc(sa.name):''}
+            ${q.deadline?` · <b style="color:${isOverdue?'var(--red)':isDueSoon?'var(--amber)':'inherit'}">Due: ${q.deadline}${isOverdue?' ⚠ OVERDUE':isDueSoon?' ⚡ Due soon':''}</b>`:''}
+          </div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          ${q.status==='pending'?`<button class="btn sm" onclick="updateQReqStatus('${q.id}','in_progress')">Start →</button>`:''}
-          ${q.status==='in_progress'?`<span class="chip a">In progress</span>`:''}
-          ${q.status==='ready'?`<span class="chip g">✓ Ready</span>`:''}
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+          <span class="chip ${st.chip}">${st.label}</span>
+          ${showUpload?`<select onchange="updateQReqStatus('${q.id}',this.value)" style="width:auto;font-size:12px;padding:4px 8px">${Object.entries(QSTATUS).map(([k,v])=>`<option value="${k}" ${q.status===k?'selected':''}>${v.label}</option>`).join('')}</select>`:''}
         </div>
       </div>
-      ${showUpload&&q.status!=='ready'?`
+      ${showUpload&&q.status!=='quotation_submitted'?`
         <div id="qr-drop-${q.id}" ondrop="handleQReqDrop(event,'${q.id}','${q.deal_id}')"
           ondragover="event.preventDefault();this.style.borderColor='var(--green)';this.style.background='var(--green-lt)'"
           ondragleave="this.style.borderColor='#DCDCD2';this.style.background='#fff'"
           onclick="el('qr-inp-${q.id}').click()"
-          style="border:2px dashed #DCDCD2;border-radius:8px;padding:16px;text-align:center;cursor:pointer;margin-top:8px;transition:all .2s;font-size:13px">
+          style="border:2px dashed #DCDCD2;border-radius:8px;padding:14px;text-align:center;cursor:pointer;margin-top:8px;transition:all .2s;font-size:13px">
           📎 Drag &amp; drop completed quotation PDF here, or click to browse
           <input type="file" id="qr-inp-${q.id}" accept=".pdf" style="display:none" onchange="handleQReqFile(event,'${q.id}','${q.deal_id}')">
         </div>
         <div id="qr-prog-${q.id}"></div>`:''}
-      ${q.status==='ready'&&q.doc_id?`<div style="margin-top:6px;font-size:12px;color:var(--green)">✓ PDF uploaded and saved to client docs</div>`:''}
+      ${q.status==='quotation_submitted'&&q.doc_id?`<div style="margin-top:6px;font-size:12px;color:var(--green)">✓ PDF uploaded and saved to client docs</div>`:''}
     </div>`;
   };
 
+  const totalPending=pending.length+inprog.length+awaiting.length+forReview.length;
   return`<div class="section-title" style="margin-bottom:4px">Quotations</div>
-  <div class="sub" style="margin-bottom:16px">${isEst?'Your quotation queue — drag and drop the completed PDF onto each request when done.':'All quotation requests across all deals.'}</div>
+  <div class="sub" style="margin-bottom:16px">${isEst?'Your quotation queue — update status as you work, drag and drop the completed PDF when done.':'All quotation requests across all deals.'}</div>
 
   ${pending.length?`<div style="margin-bottom:20px">
-    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--red);margin-bottom:10px">⏳ Pending (${pending.length})</div>
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--steel);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:var(--steel);display:inline-block"></span>Pending (${pending.length})</div>
     ${pending.map(q=>mkCard(q,isEst)).join('')}
   </div>`:''}
 
   ${inprog.length?`<div style="margin-bottom:20px">
-    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--amber);margin-bottom:10px">🔧 In progress (${inprog.length})</div>
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--blue);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:var(--blue);display:inline-block"></span>In progress (${inprog.length})</div>
     ${inprog.map(q=>mkCard(q,isEst)).join('')}
   </div>`:''}
 
-  ${ready.length?`<div style="margin-bottom:20px">
-    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--green);margin-bottom:10px">✓ Ready (${ready.length})</div>
-    ${ready.map(q=>mkCard(q,false)).join('')}
+  ${awaiting.length?`<div style="margin-bottom:20px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--amber);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:var(--amber);display:inline-block"></span>Awaiting suppliers (${awaiting.length})</div>
+    ${awaiting.map(q=>mkCard(q,isEst)).join('')}
+  </div>`:''}
+
+  ${forReview.length?`<div style="margin-bottom:20px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#7B3FA0;margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:#7B3FA0;display:inline-block"></span>For review (${forReview.length})</div>
+    ${forReview.map(q=>mkCard(q,isEst)).join('')}
+  </div>`:''}
+
+  ${submitted.length?`<div style="margin-bottom:20px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--green);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:var(--green);display:inline-block"></span>Quotation submitted (${submitted.length})</div>
+    ${submitted.map(q=>mkCard(q,false)).join('')}
   </div>`:''}
 
   ${!QUOTE_REQS.length?`<div class="empty" style="margin-top:40px">No quotation requests yet. Sales Agents submit requests from the Docs tab inside each deal.</div>`:''}`;
@@ -1598,7 +1628,7 @@ async function uploadQReqPDF(file,reqId,dealId){
   // Save to crm_documents
   const {data:doc}=await db.addDoc({deal_id:dealId,type:'Quotation',name:file.name,link:'',filed_by:PROFILE.name,storage_path:path});
   // Mark request as ready and link the doc
-  await db.updateQuoteReq(reqId,{status:'ready',doc_id:doc?.id||null});
+  await db.updateQuoteReq(reqId,{status:'quotation_submitted',doc_id:doc?.id||null});
   // Notify SA via activity log
   const deal=DEALS.find(d=>d.id===dealId);
   await db.addActivity({deal_id:dealId,type:'Quotation ready',note:`Quotation "${file.name}" uploaded by ${PROFILE.name} — ready for client.`,by_name:PROFILE.name});
