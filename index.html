@@ -155,7 +155,7 @@ const SS_SUB=[
 const SA_STAGES=['Evaluation','Qualified','Site Inspection','Proposal','Bidding / Negotiation','Committed','Closed Sale'];
 const SA_FLAGS={'Evaluation':7,'Qualified':14,'Site Inspection':21,'Proposal':30,'Bidding / Negotiation':30,'Committed':21,'Closed Sale':7};
 const TOUCH=['Bidding / Negotiation','Committed'];
-const SCOPES=['Full build (prefab + equipment)','Prefab building only','Equipment supply only'];
+const SCOPES=['Full build (prefab + equipment)','Prefab building only','Equipment supply only','Parts / System supply','Retro / Rehab','Conversion to CCS4','Conversion to Breeder from CCS3','Conversion to MTC from CCS3'];
 const FARM_TYPES=['Broiler','Breeder','Layer / Multi-tier','Other'];
 const SOURCES=['Referral','Integrator program','Walk-in / Inbound','Agent / Broker','Self-generated'];
 const DOC_TYPES=['Quotation','Official Receipt (OR)','Pro-forma Invoice','Site Inspection Report','Contract / PO','Letter of Intent','Bank Documents','Permit','Other'];
@@ -1002,6 +1002,7 @@ function buildDayPanel(){
       <div class="row" style="margin-top:8px;gap:6px">
         ${a.status!=='done'?`<button class="btn sm" onclick="setApptStatus('${a.id}','done')">✓ Done</button>`:''}
         ${a.status!=='missed'?`<button class="btn sm sec" onclick="setApptStatus('${a.id}','missed')">✗ Missed</button>`:''}
+        ${(PROFILE.id===a.user_id||PROFILE.role==='Sales Head')?`<button class="btn sm sec" onclick="editAppt('${a.id}')">Edit</button>`:''}
         ${(PROFILE.id===a.user_id||PROFILE.role==='Sales Head')?`<button class="btn sm warn" onclick="delAppt('${a.id}')">Delete</button>`:''}
       </div>
     </div>`).join('')}
@@ -1010,21 +1011,34 @@ function buildDayPanel(){
 }
 function buildApptModal(){
   const dt=MODAL.date||today();
+  const a=MODAL.appt||null;
+  const purposes=['Site inspection','Proposal presentation','Follow-up meeting','Bank meeting','Integrator meeting','Signing / collection','Client check-in','Other'];
   return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
   <div class="modal" style="max-width:520px">
     <button class="modal-close" onclick="MODAL=null;render()">×</button>
-    <h2 style="margin-bottom:16px">Submit appointment</h2>
+    <h2 style="margin-bottom:16px">${a?'Edit appointment':'Submit appointment'}</h2>
     <div class="grid2">
-      <div><label>Your name</label><input id="a_sp" value="${esc(PROFILE.name)}"></div>
-      <div><label>Date</label><input type="date" id="a_date" value="${dt}"></div>
-      <div><label>Time</label><input type="time" id="a_time"></div>
-      <div><label>Purpose</label><select id="a_purpose">${['Site inspection','Proposal presentation','Follow-up meeting','Signing / collection','Client check-in','Other'].map(p=>`<option>${p}</option>`).join('')}</select></div>
-      <div><label>Client / prospect</label><input id="a_client"></div>
-      <div><label>Location</label><input id="a_loc"></div>
-      <div class="full"><label>Notes</label><input id="a_notes"></div>
+      <div><label>Your name</label><input id="a_sp" value="${esc(a?.sp_name||PROFILE.name)}"></div>
+      <div><label>Date</label><input type="date" id="a_date" value="${a?.date||dt}"></div>
+      <div><label>Time</label><input type="time" id="a_time" value="${a?.time_slot||''}"></div>
+      <div><label>Purpose</label><select id="a_purpose">${purposes.map(p=>`<option ${(a?.purpose||'')=== p?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div><label>People / company to visit</label><input id="a_client" value="${esc(a?.client||'')}"></div>
+      <div><label>Location</label><input id="a_loc" value="${esc(a?.location||'')}"></div>
+      <div class="full"><label>Notes</label><input id="a_notes" value="${esc(a?.notes||'')}"></div>
     </div>
-    <button class="btn" style="margin-top:8px" onclick="submitAppt()">Submit</button>
+    <button class="btn" style="margin-top:8px" onclick="${a?`saveApptEdit('${a.id}')`:'submitAppt()'}">${a?'Save changes':'Submit'}</button>
   </div></div>`;
+}
+function editAppt(id){
+  const a=APPTS.find(x=>x.id===id);
+  if(!a)return;
+  MODAL={type:'appt',date:a.date,appt:a};
+  render();
+}
+async function saveApptEdit(id){
+  const v=k=>el(k)?.value;
+  await db.updateAppt(id,{sp_name:v('a_sp'),date:v('a_date'),time_slot:v('a_time'),purpose:v('a_purpose'),client:v('a_client'),location:v('a_loc'),notes:v('a_notes')});
+  MODAL=null;await loadAll();render();
 }
 async function submitAppt(){
   const v=k=>el(k)?.value;
@@ -1168,7 +1182,7 @@ function buildTravelModal(){
       <div><label>Date</label><input type="date" id="tr_date" value="${today()}"></div>
       <div><label>Est. cost (PHP)</label><input type="number" id="tr_cost" value="0"></div>
       <div class="full"><label>Destination(s)</label><input id="tr_dest"></div>
-      <div class="full"><label>Clients to visit + pipeline stage</label><textarea id="tr_clients" rows="3"></textarea></div>
+      <div class="full"><label>People / company to visit</label><textarea id="tr_clients" rows="3" placeholder="e.g. Juan dela Cruz – BDO Pampanga, Bounty Agro integrator rep, Client farm site…"></textarea></div>
       <div class="full"><label>Purpose / expected stage movement</label><input id="tr_purpose"></div>
     </div>
     <button class="btn" style="margin-top:8px" onclick="submitTravel()">File request</button>
