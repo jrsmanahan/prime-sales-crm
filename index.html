@@ -722,7 +722,8 @@ function buildDealModal(){
     ${!isNew?`<div class="modal-tabs">${tabBtns}</div>`:''}
     ${content}
     <div class="row" style="margin-top:20px;flex-wrap:wrap">
-      <button class="btn" onclick="saveDeal(${isNew?'null':`'${d.id}'`})">${isNew?'Create lead':'Save changes'}</button>
+      ${isNew||MODAL_TAB==='Profile'?`<button class="btn" onclick="saveDeal(${isNew?'null':`'${d.id}'`})">${isNew?'Create lead':'Save changes'}</button>`:
+        `<div class="sub" style="font-size:11px">✓ ${MODAL_TAB} saves automatically</div>`}
       ${!isNew&&d.status==='open'&&(PROFILE.role==='Sales Agent'||PROFILE.role==='Sales Head')?`
         <button class="btn" style="background:var(--blue)" onclick="markWon('${d.id}')">Mark WON</button>
         <button class="btn warn" onclick="markLost('${d.id}')">Mark LOST</button>`:''}
