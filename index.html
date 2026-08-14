@@ -203,6 +203,7 @@ let API_KEY='';
 const db={
   deals:()=>sb.from('crm_deals').select('*').order('created_at',{ascending:false}),
   upsertDeal:d=>sb.from('crm_deals').upsert(d).select().single(),
+  updateDeal:(id,fields)=>sb.from('crm_deals').update(fields).eq('id',id).select().single(),
   users:()=>sb.from('crm_users').select('*').order('name'),
   updateUser:(id,p)=>sb.from('crm_users').update(p).eq('id',id),
   activities:id=>sb.from('crm_activities').select('*').eq('deal_id',id).order('created_at'),
@@ -832,8 +833,12 @@ async function markLost(id){
 }
 async function toggleMs(dealId,key,on){
   const d=DEALS.find(x=>x.id===dealId);if(!d)return;
+  // Prevent double-fire from re-renders
+  if(d.milestones&&!!d.milestones[key]===on)return;
   const ms={...d.milestones,[key]:on?today():null};
-  await db.upsertDeal({id:dealId,milestones:ms,updated_at:new Date().toISOString()});
+  const {error}=await db.updateDeal(dealId,{milestones:ms,updated_at:new Date().toISOString()});
+  if(error){console.error('Milestone save failed:',error);return;}
+  // Log activity only when checking ON, not unchecking
   if(on)await db.addActivity({deal_id:dealId,type:'Milestone',note:MS_LABEL[key],by_name:PROFILE.name});
   await loadAll();
   const updated=DEALS.find(x=>x.id===dealId);if(updated)MODAL.deal=updated;
