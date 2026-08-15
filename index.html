@@ -1355,7 +1355,31 @@ function buildKPI(){
     const pipeVal=openDeals.reduce((a,d)=>a+(+d.value||0),0);
     const pipeRatio=target?+(pipeVal/target).toFixed(1):null;
 
-    return{openDeals:openDeals.length,callsDone,callsMissed,callsTotal,callRate,visitsCount,naRate,withNA,noNA:openDeals.length-withNA,travelSpend,stageMoves,spendPerMove,won:won.length,wonVal,target,att,pipeVal,pipeRatio};
+    // Win rate — won ÷ (won + lost) all time for this agent
+    const allWon=DEALS.filter(d=>d.sa_agent_id===u.id&&d.status==='won');
+    const allLost=DEALS.filter(d=>d.sa_agent_id===u.id&&d.status==='lost');
+    const totalClosed=allWon.length+allLost.length;
+    const winRate=totalClosed?Math.round(allWon.length/totalClosed*100):null;
+
+    // Stage velocity — avg days between stage moves this period
+    const allMoves=DEALS.filter(d=>d.sa_agent_id===u.id)
+      .flatMap(d=>(d.stage_history||[]).filter(h=>h.date>=cutoff).map(h=>h.date)).sort();
+    const avgVelocity=allMoves.length>1?
+      Math.round(allMoves.reduce((a,d,i,arr)=>i===0?a:a+(new Date(d)-new Date(arr[i-1]))/(1000*60*60*24),0)/(allMoves.length-1)):null;
+
+    // Stale deals — open deals with no stage move in 30+ days
+    const stale=openDeals.filter(d=>{
+      const hist=d.stage_history||[];
+      const lastMove=hist.length?hist[hist.length-1].date:d.created_at?.slice(0,10)||'';
+      return lastMove&&(new Date(today())-new Date(lastMove))/(1000*60*60*24)>=30;
+    }).length;
+
+    // Quotation-to-close — % of deals that reached Proposal stage and were won
+    const proposalPlus=['Proposal','Bidding / Negotiation','Committed','Closed Sale'];
+    const gotQuote=DEALS.filter(d=>d.sa_agent_id===u.id&&proposalPlus.some(s=>(d.stage_history||[]).map(h=>h.stage).includes(s)));
+    const qtcRate=gotQuote.length?Math.round(allWon.length/gotQuote.length*100):null;
+
+    return{openDeals:openDeals.length,callsDone,callsMissed,callsTotal,callRate,visitsCount,naRate,withNA,noNA:openDeals.length-withNA,travelSpend,stageMoves,spendPerMove,won:won.length,wonVal,target,att,pipeVal,pipeRatio,winRate,totalClosed,avgVelocity,stale,qtcRate,gotQuote:gotQuote.length};
   }
 
   // ── SS KPIs ──
@@ -1430,6 +1454,14 @@ function buildKPI(){
         ${Score(v.pipeRatio!==null?`${v.pipeRatio}× target (${peso(v.pipeVal)})`:peso(v.pipeVal),
           'Pipeline coverage','Target: 3–4× quarterly goal',
           v.pipeRatio?Math.min(v.pipeRatio/4*100,100):0,75)}
+        ${Score(v.winRate!==null?`${v.winRate}% (${v.totalClosed} closed deals)`:'No closed deals yet',
+          'Win rate','Won ÷ total closed — all time',v.winRate||0,50)}
+        ${Score(v.avgVelocity!==null?`${v.avgVelocity} days avg between stages`:'No stage moves this period',
+          'Stage velocity','Avg days between each stage advance this period')}
+        ${Score(v.stale>0?`⚠ ${v.stale} deal${v.stale>1?'s':''} stale (30+ days)`:'All deals moving',
+          'Stale deals','Open deals with no stage move in 30+ days')}
+        ${Score(v.qtcRate!==null?`${v.qtcRate}% (${v.gotQuote} reached Proposal)`:'No proposals yet',
+          'Quotation-to-close rate','% of deals that reached Proposal stage and were won',v.qtcRate||0,30)}
       `)}
     </div>`;
   }).join('')||'<div class="empty">No Sales Agents configured in Team yet.</div>';
