@@ -583,8 +583,13 @@ function buildDealModal(){
       <div><label>Farm type</label><select id="f_ft">${FARM_TYPES.map(s=>`<option ${d?.farm_type===s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div><label>House model</label><input id="f_hm" value="${esc(d?.house_model||'')}" placeholder="CCS3, CCS4…"></div>
       <div><label>No. of buildings</label><input type="number" id="f_nb" value="${d?.num_bldgs||1}" min="1"></div>
-      <div><label>Stage</label><select id="f_stg"><option>Lead</option>${SA_STAGES.map(s=>`<option ${d?.stage===s?'selected':''}>${s}</option>`).join('')}</select></div>
-      ${d?.stage==='Lead'?`<div><label>Lead substage</label><select id="f_ss">${SS_SUB.map(s=>`<option value="${s.key}" ${(d?.substage||'untouched')===s.key?'selected':''}>${s.label}</option>`).join('')}</select></div>`:'<div></div>'}
+      ${(d?.sa_agent_id)?
+        `<div><label>Stage</label><select id="f_stg">${SA_STAGES.map(s=>`<option ${d?.stage===s?'selected':''}>${s}</option>`).join('')}</select></div>
+        <div></div>`:
+        `<input type="hidden" id="f_stg" value="Lead">
+        <div><label>Lead substage</label><select id="f_ss">${SS_SUB.map(s=>`<option value="${s.key}" ${(d?.substage||'untouched')===s.key?'selected':''}>${s.label}</option>`).join('')}</select></div>
+        <div></div>`
+      }
       <div><label>Contact</label><input id="f_contact" value="${esc(d?.contact||'')}"></div>
       <div><label>Email</label><input id="f_email" value="${esc(d?.email||'')}"></div>
       <div class="full"><label>Office / business address</label><input id="f_offaddr" value="${esc(d?.office_address||'')}" placeholder="e.g. Brgy. San Isidro, San Fernando, Pampanga"></div>
@@ -845,9 +850,13 @@ async function saveDeal(id){
   const deal=id?DEALS.find(d=>d.id===id):null;
   const stage=v('f_stg');
   const sh=[...(deal?.stage_history||[])];
-  if(deal&&deal.stage!==stage)sh.push({stage,date:today()});
   const gates={land:el('g_land')?.checked||false,money:el('g_money')?.checked||false,market:el('g_market')?.checked||false,timeline:el('g_timeline')?.checked||false};
   const assigneeId=v('f_sp')||null;
+  // If SA just got assigned and stage is still Lead, auto-advance to Evaluation
+  const wasLead=deal?.stage==='Lead'||!deal;
+  const saJustAssigned=assigneeId&&!deal?.sa_agent_id;
+  const resolvedStage=(saJustAssigned&&wasLead)?'Evaluation':(v('f_stg')||'Lead');
+  if(deal&&deal.stage!==resolvedStage)sh.push({stage:resolvedStage,date:today()});
   const nextAction=v('f_na');
   const nextActionDate=v('f_nad')||null;
   const payload={
@@ -855,7 +864,7 @@ async function saveDeal(id){
     client:v('f_client'),farm:v('f_farm'),location:v('f_loc'),value:+v('f_val')||0,
     ss_agent_id:v('f_ssag')||null,sa_agent_id:assigneeId,
     source:v('f_src'),scope:v('f_scope'),farm_type:v('f_ft'),house_model:v('f_hm'),num_bldgs:+v('f_nb')||1,
-    stage,substage:v('f_ss')||'untouched',gates,
+    stage:resolvedStage,substage:v('f_ss')||'untouched',gates,
     next_action:nextAction,next_action_date:nextActionDate,
     target_date:v('f_td')||null,travel_budget:+v('f_tb')||0,
     contact:v('f_contact'),email:v('f_email'),office_address:v('f_offaddr')||'',reqs:deal?.reqs||'',
