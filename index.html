@@ -159,10 +159,9 @@ const SA_FLAGS={'Evaluation':7,'Qualified':14,'Site Inspection':21,'Proposal':30
 const TOUCH=['Bidding / Negotiation','Committed'];
 const SCOPES=['Full build (prefab + equipment)','Prefab building only','Equipment supply only','Parts / System supply','Retro / Rehab','Conversion to CCS4','Conversion to Breeder from CCS3','Conversion to MTC from CCS3','Fermentation Tank'];
 const FARM_TYPES=['Broiler','Breeder','Layer','Multi-tier Cage','Other'];
-const SOURCES=['Referral','Integrator program','Walk-in / Inbound','Agent / Broker','Self-generated'];
+const SOURCES=['Inbound','Self-generated','Referral / Partner','Existing client'];
 const DOC_TYPES=['Quotation','Official Receipt (OR)','Pro-forma Invoice','Site Inspection Report','Contract / PO','Letter of Intent','Bank Documents','Permit','Other'];
 const LOST_REASONS=['Price too high','Client timeline changed','Lost to competition (Retech/others)','No budget approved','No decision made','Client unqualified','Project cancelled','Other'];
-const LEAD_SOURCES_EXT=['Inbound Inquiry','SA Self-Generated','Client Referral','Existing Client / Upsell'];
 const QUOTE_STATUS=['Draft','Pending engineering review','Engineering approved','Sent to client','Revised','Final / signed'];
 const TASK_TYPES=['Call','Site visit','Follow-up email','Send brochure','Send quotation','Collect PDC','Collect DP','Engineering coordination','Permit follow-up','Client meeting','Other'];
 const MILESTONES=[
@@ -190,13 +189,19 @@ function dealDays(d){
   const h=(d.stage_history||[]).filter(x=>x.stage===d.stage);
   return daysSince(h.length?h[h.length-1].date:today());
 }
+// One clock: days since the last real agent activity (note, call, visit, discovery, stage move).
+// last_activity_at is stamped by DB triggers on crm_activities / crm_visit_reports.
+const STALE_DAYS=14;
+const idleDays=d=>daysSince((d.last_activity_at||d.created_at||new Date().toISOString()).slice(0,10));
+const isStale=d=>idleDays(d)>=STALE_DAYS;
+const idleBadge=d=>{const n=idleDays(d),c=n>=STALE_DAYS?'r':n>=10?'a':'';return`<span class="dayschip ${c}" title="Days since last logged activity">${n}d idle</span>`;};
 const dealDayLabel=d=>TOUCH.includes(d.stage)?'idle':'in stage';
 const msCount=d=>Object.values(d.milestones||{}).filter(Boolean).length;
 
 // ── state ──
 let SESSION=null,PROFILE=null,TAB='dash',PIPE_VIEW='ss';
 let DEALS=[],USERS=[],TASKS=[],TRAVEL=[],APPTS=[],PLAYBOOK=[],RULEBOOK=[],QUOTE_REQS=[];
-let MODAL=null,MODAL_TAB='Profile';
+let MODAL=null,MODAL_TAB='Profile',ACT_TYPE='';
 let CAL_MONTH=new Date(new Date().getFullYear(),new Date().getMonth(),1),CAL_FILTER='',CAL_DAY=null;
 let PIPE_SEARCH='',PIPE_SP='',PIPE_STAGE='',PIPE_SCOPE='',PIPE_SOURCE='',PIPE_SHOW_NURTURE=false;
 let KPI_PERIOD='quarter',KPI_VIEW='sa';
@@ -291,14 +296,17 @@ function buildApp(){
   if(!SESSION)return buildLogin();
   if(!PROFILE)return'<div style="display:flex;align-items:center;justify-content:center;height:100vh"><span class="spin dk" style="width:24px;height:24px;border-width:3px"></span></div>';
   const role=PROFILE.role||'Sales Agent';
-  const tabs=[
-    ['dash','Dashboard'],['pipe','Pipeline'],['cal','Calendar'],
-    ['tasks','Tasks'],['travel','Travel'],['play','Playbook'],['rules','Rulebook'],['ai','AI Coach'],
-    ...(role==='Sales Head'?[['kpi','KPIs'],['team','Team']]:[]),
-    ...(role==='Estimator'?[['pipe','Pipeline'],['quotes','Quotations']]:[]),
-    ...(role==='Sales Head'?[['quotes','Quotations']]:[] )
+  // Navigation grouped by role: few top-level items, related pages as sub-tabs
+  const GROUPS=role==='Estimator'?[['quotes','Quotations',[['quotes','Quotations']]]]:[
+    ['today','Today',[['dash','Dashboard'],['tasks','Tasks'],['cal','Calendar'],['travel','Travel']]],
+    ['pipe','Pipeline',[['pipe','Pipeline']]],
+    ['play','Playbook',[['play','Playbook'],['rules','Rulebook'],['ai','AI Coach']]],
+    ...(role==='Sales Head'?[['quotes','Quotations',[['quotes','Quotations']]],['kpi','KPIs',[['kpi','KPIs']]],['team','Team',[['team','Team']]]]:[])
   ];
-  const navBtns=tabs.map(([k,l])=>`<button class="${TAB===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
+  if(!GROUPS.some(g=>g[2].some(([k])=>k===TAB)))TAB=GROUPS[0][2][0][0];
+  const curGroup=GROUPS.find(g=>g[2].some(([k])=>k===TAB));
+  const navBtns=GROUPS.map(([gk,gl,kids])=>`<button class="${curGroup===GROUPS.find(g=>g[0]===gk)?'on':''}" onclick="go('${kids[0][0]}')">${gl}</button>`).join('');
+  const subNav=curGroup[2].length>1?`<div style="display:inline-flex;flex-wrap:wrap;gap:2px;background:#EDEDE5;border-radius:8px;padding:3px;margin-bottom:14px">${curGroup[2].map(([k,l])=>`<button class="btn sm ${TAB===k?'':'sec'}" style="${TAB===k?'':'background:transparent;border:none'}" onclick="go('${k}')">${l}</button>`).join('')}</div>`:'';
   let content='';
   if(TAB==='dash')content=buildDash();
   else if(TAB==='pipe')content=buildPipe();
@@ -311,6 +319,7 @@ function buildApp(){
   else if(TAB==='kpi')content=buildKPI();
   else if(TAB==='team')content=buildTeam();
   else if(TAB==='quotes')content=buildQuotes();
+  content=subNav+content;
   return`
     <header>
       <div class="brand"><h1>PRIME SALES</h1><p>CRM</p></div>
@@ -403,7 +412,7 @@ function buildDash(){
   const won=DEALS.filter(d=>d.status==='won'&&(d.won_date||'')>=qd.toISOString().slice(0,10));
   const wonVal=won.reduce((a,d)=>a+(+d.value||0),0);
   const myOpen=isSS?open.filter(d=>d.ss_agent_id===PROFILE.id):open.filter(d=>d.sa_agent_id===PROFILE.id);
-  const flagged=(isAdmin?open:myOpen).filter(d=>dealDays(d)>(SA_FLAGS[d.stage]||14));
+  const flagged=(isAdmin?open:myOpen).filter(isStale).sort((a,b)=>idleDays(b)-idleDays(a));
   const noNext=myOpen.filter(d=>!d.next_action);
   const funnel=SA_STAGES.map(st=>{
     const ds=(isAdmin?open:myOpen).filter(d=>d.stage===st);
@@ -415,7 +424,7 @@ function buildDash(){
   const flagRows=flagged.slice(0,8).map(d=>`<tr>
     <td><b>${esc(d.client)}</b><div class="sub">${esc(d.farm)}</div></td>
     <td>${esc(d.stage)}</td>
-    <td><span class="chip r">${dealDays(d)}d ${dealDayLabel(d)}</span></td>
+    <td><span class="chip r">${idleDays(d)}d idle</span></td>
     <td class="sub">${esc(saAgent(d))}</td>
     <td class="sub">${esc(d.next_action||'— none set')}</td></tr>`).join('');
   return`<div class="section-title">Dashboard</div>
@@ -423,19 +432,20 @@ function buildDash(){
     ${role==='Estimator'?`<div class="kpi ${QUOTE_REQS.filter(q=>q.status==='pending').length?'hot':''}"><div class="l">Pending quotations</div><div class="v">${QUOTE_REQS.filter(q=>q.status==='pending').length}</div><div class="d">${QUOTE_REQS.filter(q=>q.status==='in_progress').length} in progress</div></div>`:''}
     ${!isSS&&role!=='Estimator'?`<div class="kpi"><div class="l">Pipeline value</div><div class="v">${peso(myOpen.reduce((a,d)=>a+(+d.value||0),0))}</div><div class="d">${myOpen.length} open deals</div></div>`:''}
     ${isAdmin?`<div class="kpi"><div class="l">Closed this quarter</div><div class="v">${peso(wonVal)}</div><div class="d">${won.length} deals won</div></div>`:''}
-    <div class="kpi ${flagged.length?'hot':''}"><div class="l">Past stage flag</div><div class="v">${flagged.length}</div><div class="d">need attention</div></div>
+    <div class="kpi ${flagged.length?'hot':''}"><div class="l">Stale deals</div><div class="v">${flagged.length}</div><div class="d">no activity ${STALE_DAYS}+ days</div></div>
     <div class="kpi ${noNext.length?'hot':''}"><div class="l">No next action</div><div class="v">${noNext.length}</div><div class="d">dormant risk</div></div>
     ${isSS?`<div class="kpi"><div class="l">My leads</div><div class="v">${myOpen.filter(d=>d.stage==='Lead').length}</div><div class="d">${myOpen.filter(d=>d.substage==='profile_done').length} ready for handoff</div></div>`:''}
   </div>
   ${!isSS?`<div class="card" style="margin-bottom:14px"><h3 style="font-size:14px;margin-bottom:10px">Sales funnel</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px">${funnel}</div></div>`:''}
-  <div class="card"><h3 style="font-size:14px;margin-bottom:${flagged.length?10:0}px">⚠ Flagged deals</h3>
-    ${flagged.length?`<table><thead><tr><th>Client</th><th>Stage</th><th>Days</th><th>Agent</th><th>Next action</th></tr></thead><tbody>${flagRows}</tbody></table>`:'<div class="empty">No flagged deals. Clean pipeline!</div>'}
+  <div class="card"><h3 style="font-size:14px;margin-bottom:${flagged.length?10:0}px">⚠ Stale deals — no activity in ${STALE_DAYS}+ days</h3>
+    ${flagged.length?`<table><thead><tr><th>Client</th><th>Stage</th><th>Idle</th><th>Agent</th><th>Next action</th></tr></thead><tbody>${flagRows}</tbody></table>`:'<div class="empty">No flagged deals. Clean pipeline!</div>'}
   </div>`;
 }
 
 // ── PIPELINE ──
 function buildPipe(){
   const role=PROFILE.role;
+  if(role==='Sales Agent')PIPE_VIEW='sa';else if(role==='Lead Gen')PIPE_VIEW='ss';
   const allOpen=DEALS.filter(d=>d.status==='open');
   const allNurture=DEALS.filter(d=>d.status==='nurture');
   const allClosed=DEALS.filter(d=>d.status==='lost'||d.status==='won');
@@ -444,7 +454,7 @@ function buildPipe(){
       if(PIPE_SEARCH){const q=PIPE_SEARCH.toLowerCase();if(![d.client,d.farm,d.location].some(f=>f?.toLowerCase().includes(q)))return false;}
       if(PIPE_SP){if(PIPE_VIEW==='ss'&&d.ss_agent_id!==PIPE_SP)return false;if(PIPE_VIEW==='sa'&&d.sa_agent_id!==PIPE_SP)return false;}
       if(PIPE_SCOPE&&d.scope!==PIPE_SCOPE)return false;
-      if(PIPE_SOURCE&&d.lead_source!==PIPE_SOURCE)return false;
+      if(PIPE_SOURCE&&d.source!==PIPE_SOURCE)return false;
       if(PIPE_STAGE){if(PIPE_VIEW==='ss'&&(d.substage||'untouched')!==PIPE_STAGE)return false;if(PIPE_VIEW==='sa'&&d.stage!==PIPE_STAGE)return false;}
       return true;
     });
@@ -465,7 +475,8 @@ function buildPipe(){
     const readyN=leads.filter(d=>(d.substage||'untouched')==='profile_done').length;
     const cols=SS_SUB.map(ss=>{
       const ds=leads.filter(d=>(d.substage||'untouched')===ss.key);
-      const cards=ds.map(d=>`<div class="deal-card" style="border-left-color:${ss.color}" onclick="openDeal('${d.id}')">
+      const cards=ds.map(d=>`<div class="deal-card${isStale(d)?' stale14':''}" style="border-left-color:${isStale(d)?'#B3402E':ss.color}" onclick="openDeal('${d.id}')">
+        ${idleBadge(d)}
         <div class="deal-name">${esc(d.client)}</div>
         <div class="deal-meta">${esc(d.location)} · ${esc(ssAgent(d))}</div>
         <div class="deal-meta">${esc(d.contact||'')}${d.email?' · '+esc(d.email):''}</div>
@@ -497,29 +508,20 @@ function buildPipe(){
     'Closed Sale':'Signed pro-forma, cleared DP, PDCs collected',
   };
   const cols=SA_STAGES.map(st=>{
-    const ds=saDeals.filter(d=>d.stage===st).sort((a,b)=>dealDays(b)-dealDays(a));
+    const ds=saDeals.filter(d=>d.stage===st).sort((a,b)=>idleDays(b)-idleDays(a));
     const cards=ds.map(d=>{
-      const days=dealDays(d),flag=SA_FLAGS[st]||14,g=d.gates||{};
-      const cls=days>flag?'overdue':days>flag*.7?'flag':'';
-      const dc=days>flag?'r':days>flag*.7?'a':'';
-      // 14-day activity stale: use updated_at as proxy (every note/save touches it)
-      const lastTouch=d.updated_at?.slice(0,10)||d.created_at?.slice(0,10)||today();
-      const actDays=daysSince(lastTouch);
-      const isStale14=actDays>=14;
-      const quoteRev=d.quote_rev||0;
-      const quoteBadge=quoteRev>0?`<span style="font-size:10px;background:#EFF6FF;color:#1D4ED8;border-radius:10px;padding:1px 6px;font-weight:700">Rev ${quoteRev}</span>`:'';
-      const leadSrcBadge=d.lead_source?`<span style="font-size:10px;background:#F3E8FF;color:#6B21A8;border-radius:10px;padding:1px 6px;font-weight:600">${esc(d.lead_source)}</span>`:'';
-      return`<div class="deal-card ${isStale14?'stale14':cls}" onclick="openDeal('${d.id}')">
-        <span class="dayschip ${dc}">${days}d ${dealDayLabel(d)}</span>
-        ${isStale14?`<span title="No activity in 14+ days" style="float:right;font-size:11px;background:var(--red-lt);color:var(--red);border-radius:10px;padding:1px 5px;font-weight:700;margin-left:4px">🔴 ${actDays}d idle</span>`:''}
+      const g=d.gates||{};
+      const rev=d.quote_rev?`<span style="font-size:10px;background:#EFF6FF;color:#1D4ED8;border-radius:10px;padding:1px 6px;font-weight:700">Quote rev ${d.quote_rev}</span>`:'';
+      const src=d.source?`<span style="font-size:10px;background:#F3E8FF;color:#6B21A8;border-radius:10px;padding:1px 6px;font-weight:600">${esc(d.source)}</span>`:'';
+      return`<div class="deal-card ${isStale(d)?'stale14':''}" onclick="openDeal('${d.id}')">
+        ${idleBadge(d)}
         <div class="deal-name">${esc(d.client)}</div>
         <div class="deal-meta">${esc(d.farm)} · ${esc(d.location)}</div>
         <div class="deal-meta">${peso(d.value)} · ${d.num_bldgs||1}x ${esc(d.house_model||d.farm_type||'')} · ${esc(saAgent(d))}</div>
-        ${(quoteBadge||leadSrcBadge)?`<div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap">${quoteBadge}${leadSrcBadge}</div>`:''}
+        ${(rev||src)?`<div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap">${rev}${src}</div>`:''}
         <div class="gates">
           <span class="gate ${g.land?'ok':''}" title="Land"></span><span class="gate ${g.money?'ok':''}" title="Money"></span>
           <span class="gate ${g.market?'ok':''}" title="Market"></span><span class="gate ${g.timeline?'ok':''}" title="Timeline"></span>
-          <span class="sub" style="margin-left:auto;font-size:10px">◉ ${msCount(d)}/${MS_TOTAL}</span>
         </div>
         ${d.next_action?`<div class="deal-meta" style="margin-top:5px">→ ${esc(d.next_action)} <span class="sub">${esc(d.next_action_date||'')}</span></div>`:'<div class="deal-meta" style="margin-top:5px;color:var(--red)">→ no next action</div>'}
       </div>`;
@@ -527,7 +529,6 @@ function buildPipe(){
     return`<div class="kcol"><div class="kcol-hdr" style="flex-direction:column;align-items:flex-start;gap:2px;padding-bottom:8px;border-bottom:3px solid var(--green)">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
         <span>${st} (${ds.length})</span>
-        <span style="font-size:10px;color:var(--mut);font-weight:400">${TOUCH.includes(st)?`flag ${SA_FLAGS[st]}d idle`:`flag ${SA_FLAGS[st]}d`}</span>
       </div>
       <span style="font-size:10px;color:var(--mut);font-weight:400">→ ${SA_DEFS[st]||''}</span>
     </div>${cards||'<div class="empty">empty</div>'}</div>`;
@@ -536,9 +537,10 @@ function buildPipe(){
     <td><b>${esc(d.client)}</b></td>
     <td>${d.status==='won'?'<span class="chip g">WON</span>':'<span class="chip r">LOST</span>'}</td>
     <td>${peso(d.value)}</td><td>${esc(saAgent(d))}</td>
-    <td class="sub">${esc(d.status==='won'?'Won '+(d.won_date||''):d.lost_reason)}</td></tr>`).join('');
+    <td class="sub">${esc(d.status==='won'?'Won '+(d.won_date||''):d.lost_reason)}</td>
+    <td class="sub">${d.status==='won'&&d.discount_pct>0?`${d.discount_pct}%${d.discount_approved_by?' · '+esc(d.discount_approved_by):''}`:''}</td></tr>`).join('');
   // Nurture queue section
-  const nurtureDeals=filt(allNurture.filter(d=>SA_STAGES.includes(d.stage)||!d.stage||d.stage==='Lead'||true));
+  const nurtureDeals=filt(allNurture);
   const nurtureSection=nurtureDeals.length?`<div class="card" style="margin-top:16px;border-left:4px solid #6B21A8">
     <div class="row" style="justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <div><h3 style="font-size:14px;margin:0">🌱 Nurture queue <span class="chip p">${nurtureDeals.length}</span></h3>
@@ -558,13 +560,13 @@ function buildPipe(){
     <select onchange="PIPE_SP=this.value;render()" style="width:auto">${agentOpts}</select>
     <select onchange="PIPE_STAGE=this.value;render()" style="width:auto">${stgOpts}</select>
     <select onchange="PIPE_SCOPE=this.value;render()" style="width:auto"><option value="">All scopes</option>${SCOPES.map(s=>`<option ${PIPE_SCOPE===s?'selected':''}>${s}</option>`).join('')}</select>
-    <select onchange="PIPE_SOURCE=this.value;render()" style="width:auto"><option value="">All lead sources</option>${LEAD_SOURCES_EXT.map(s=>`<option ${PIPE_SOURCE===s?'selected':''}>${s}</option>`).join('')}</select>
+    <select onchange="PIPE_SOURCE=this.value;render()" style="width:auto"><option value="">All sources</option>${SOURCES.map(s=>`<option ${PIPE_SOURCE===s?'selected':''}>${s}</option>`).join('')}</select>
     ${clearBtn}<span class="sub" style="margin-left:auto">${saDeals.length} shown</span>
   </div>
-  <div class="sub" style="margin-bottom:10px">KPI clock starts from handoff date. Bidding/Committed flag on idle days.</div>
+  <div class="sub" style="margin-bottom:10px">Each card shows days since the last logged note, call, visit or stage move. Red = ${STALE_DAYS}+ days.</div>
   <div class="kanban-sa">${cols}</div>
   ${nurtureSection}
-  ${closedRows?`<div class="card" style="margin-top:16px"><h3 style="font-size:14px;margin-bottom:10px">Closed deals</h3><table><thead><tr><th>Client</th><th>Result</th><th>Value</th><th>Agent</th><th>Reason / note</th></tr></thead><tbody>${closedRows}</tbody></table></div>`:''}`;
+  ${closedRows?`<div class="card" style="margin-top:16px"><h3 style="font-size:14px;margin-bottom:10px">Closed deals</h3><table><thead><tr><th>Client</th><th>Result</th><th>Value</th><th>Agent</th><th>Reason / note</th><th>Discount</th></tr></thead><tbody>${closedRows}</tbody></table></div>`:''}`;
 }
 
 // ── DEAL MODAL ──
@@ -572,7 +574,7 @@ let DEAL_DATA={activities:[],reports:[],docs:[],quoteReqs:[],collection_tranches
 
 async function openDeal(id){
   const d=id?DEALS.find(x=>x.id===id):null;
-  MODAL={type:'deal',deal:d};MODAL_TAB='Profile';
+  MODAL={type:'deal',deal:d};MODAL_TAB='Profile';ACT_TYPE='';
   if(d){
     const [{data:a},{data:r},{data:dc},{data:qr}]=await Promise.all([
       db.activities(d.id),db.reports(d.id),db.docs(d.id),db.dealQuoteReqs(d.id)
@@ -596,7 +598,7 @@ function buildDealModal(){
   const saAgents=USERS.filter(u=>u.role==='Sales Agent'||u.role==='Sales Head');
   const spOpts='<option value="">Not yet assigned</option>'+saAgents.map(u=>`<option value="${u.id}" ${d&&d.sa_agent_id===u.id?'selected':''}>${esc(u.name)} — ${esc(u.territory)}</option>`).join('');
   const ssOpts='<option value="">Unassigned</option>'+USERS.map(u=>`<option value="${u.id}" ${d&&d.ss_agent_id===u.id?'selected':''}>${esc(u.name)}</option>`).join('');
-  const tabs=isNew?[]:['Profile','Milestones','Notes','Docs','Visit Reports'];
+  const tabs=isNew?[]:['Profile','Activity','Docs','Milestones',...((d.status==='won'||d.stage==='Closed Sale')?['Collections']:[])];
   const tabBtns=tabs.map(t=>`<button class="${MODAL_TAB===t?'on':''}" onclick="MODAL_TAB='${t}';render()">${t}</button>`).join('');
 
   let content='';
@@ -604,31 +606,23 @@ function buildDealModal(){
   const ms=d?.milestones||{};
 
   if(isNew||MODAL_TAB==='Profile'){
+    // Source is locked after handoff (commission depends on it). Sales Head can still edit.
+    const srcLocked=!!d?.handoff&&PROFILE.role!=='Sales Head';
+    const stageField=(d?.sa_agent_id)?
+        `<div><label>Stage</label><select id="f_stg">${SA_STAGES.map(s=>`<option ${d?.stage===s?'selected':''}>${s}</option>`).join('')}</select></div>`:
+        `<input type="hidden" id="f_stg" value="Lead">
+        <div><label>Lead substage</label><select id="f_ss">${SS_SUB.map(s=>`<option value="${s.key}" ${(d?.substage||'untouched')===s.key?'selected':''}>${s.label}</option>`).join('')}</select></div>`;
     content=`<div class="grid2">
       <div><label>Client name</label><input id="f_client" value="${esc(d?.client||'')}"></div>
       <div><label>Farm name</label><input id="f_farm" value="${esc(d?.farm||'')}"></div>
       <div><label>Location (site)</label><input id="f_loc" value="${esc(d?.location||'')}"></div>
-      <div><label>Est. value (PHP)</label><input type="number" id="f_val" value="${d?.value||0}"></div>
-      <div><label>Lead Gen agent</label><select id="f_ssag">${ssOpts}</select></div>
-      <div><label>Sales Agent</label><select id="f_sp">${spOpts}</select></div>
-      <div><label>Source</label><select id="f_src">${SOURCES.map(s=>`<option ${d?.source===s?'selected':''}>${s}</option>`).join('')}</select></div>
-      <div><label>Lead source (funnel)</label><select id="f_lead_src"><option value="">— select —</option>${LEAD_SOURCES_EXT.map(s=>`<option ${d?.lead_source===s?'selected':''}>${s}</option>`).join('')}</select></div>
-      <div><label>Scope</label><select id="f_scope">${SCOPES.map(s=>`<option ${d?.scope===s?'selected':''}>${s}</option>`).join('')}</select></div>
-      <div><label>Farm type</label><select id="f_ft">${FARM_TYPES.map(s=>`<option ${d?.farm_type===s?'selected':''}>${s}</option>`).join('')}</select></div>
-      <div><label>House model</label><input id="f_hm" value="${esc(d?.house_model||'')}" placeholder="CCS3, CCS4…"></div>
-      <div><label>No. of buildings</label><input type="number" id="f_nb" value="${d?.num_bldgs||1}" min="1"></div>
-      ${(d?.sa_agent_id)?
-        `<div><label>Stage</label><select id="f_stg">${SA_STAGES.map(s=>`<option ${d?.stage===s?'selected':''}>${s}</option>`).join('')}</select></div>
-        <div></div>`:
-        `<input type="hidden" id="f_stg" value="Lead">
-        <div><label>Lead substage</label><select id="f_ss">${SS_SUB.map(s=>`<option value="${s.key}" ${(d?.substage||'untouched')===s.key?'selected':''}>${s.label}</option>`).join('')}</select></div>
-        <div></div>`
-      }
       <div><label>Contact</label><input id="f_contact" value="${esc(d?.contact||'')}"></div>
-      <div><label>Email</label><input id="f_email" value="${esc(d?.email||'')}"></div>
-      <div class="full"><label>Office / business address</label><input id="f_offaddr" value="${esc(d?.office_address||'')}" placeholder="e.g. Brgy. San Isidro, San Fernando, Pampanga"></div>
-      <div><label>Target date</label><input type="date" id="f_td" value="${d?.target_date||''}"></div>
-      <div><label>Travel budget (PHP)</label><input type="number" id="f_tb" value="${d?.travel_budget||0}"></div>
+      <div><label>Est. value (PHP)</label><input type="number" id="f_val" value="${d?.value||0}"></div>
+      <div><label>Source${srcLocked?' 🔒':''}</label><select id="f_src" ${srcLocked?'disabled title="Locked after handoff — ask the Sales Head to change it"':''}>${SOURCES.map(s=>`<option ${d?.source===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      ${stageField}
+      <div></div>
+      <div><label>Next action</label><input id="f_na" value="${esc(d?.next_action||'')}"></div>
+      <div><label>Next action date</label><input type="date" id="f_nad" value="${d?.next_action_date||''}"></div>
       <div class="full"><label>Gates — qualify before site inspection</label>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
           <label style="display:flex;align-items:center;gap:6px;background:#F4F4EC;padding:7px 10px;border-radius:7px;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0" title="Land acquired or controlled — 40-ft truck access confirmed"><input type="checkbox" id="g_land" ${g.land?'checked':''} style="width:auto"> 🏡 Land acquired</label>
@@ -636,15 +630,33 @@ function buildDealModal(){
           <label style="display:flex;align-items:center;gap:6px;background:#F4F4EC;padding:7px 10px;border-radius:7px;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0" title="Has an integrator contract (contract growing) OR identified as independent commercial farm with own offtake plan"><input type="checkbox" id="g_market" ${g.market?'checked':''} style="width:auto"> 🐔 Market identified</label>
           <label style="display:flex;align-items:center;gap:6px;background:#F4F4EC;padding:7px 10px;border-radius:7px;font-size:12px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0" title="Client's target operational date is realistic vs 8–10 week building lead time and 12–14 week equipment lead time"><input type="checkbox" id="g_timeline" ${g.timeline?'checked':''} style="width:auto"> 📅 Timeline realistic</label>
         </div>
+        <details style="margin-top:6px"><summary class="sub" style="cursor:pointer">What counts for each gate?</summary>
         <div style="margin-top:8px;background:#F4F4EC;border-radius:7px;padding:8px 10px;font-size:11px;color:var(--steel);line-height:1.6">
           <b>🏡 Land</b> — Site must be acquired or controlled. 40-ft container truck access required.<br>
           <b>🏦 Financing</b> — Client needs our quotation to submit to the bank. Proceed to site visit so we can build the quotation. Bank loan in process OR own funds confirmed.<br>
           <b>🐔 Market</b> — Contract growing agreement with integrator (Bounty Agro, San Miguel, etc.) OR independent commercial farm with own buyers/offtake plan.<br>
           <b>📅 Timeline</b> — Building: 8–10 weeks lead time. Equipment: 12–14 weeks. Civil works must run in parallel.
-        </div></div>
-      <div><label>Next action</label><input id="f_na" value="${esc(d?.next_action||'')}"></div>
-      <div><label>Next action date</label><input type="date" id="f_nad" value="${d?.next_action_date||''}"></div>
+        </div>
+        </details></div>
     </div>
+    <details style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
+      <summary style="cursor:pointer;font-weight:600;font-size:13px">More details</summary>
+      <div class="grid2" style="margin-top:10px">
+        <div><label>Lead Gen agent</label><select id="f_ssag">${ssOpts}</select></div>
+        <div><label>Sales Agent</label><select id="f_sp">${spOpts}</select></div>
+        <div><label>Scope</label><select id="f_scope">${SCOPES.map(s=>`<option ${d?.scope===s?'selected':''}>${s}</option>`).join('')}</select></div>
+        <div><label>Farm type</label><select id="f_ft">${FARM_TYPES.map(s=>`<option ${d?.farm_type===s?'selected':''}>${s}</option>`).join('')}</select></div>
+        <div><label>House model</label><input id="f_hm" value="${esc(d?.house_model||'')}" placeholder="CCS3, CCS4…"></div>
+        <div><label>No. of buildings</label><input type="number" id="f_nb" value="${d?.num_bldgs||1}" min="1"></div>
+        <div><label>Email</label><input id="f_email" value="${esc(d?.email||'')}"></div>
+        <div><label>Target date</label><input type="date" id="f_td" value="${d?.target_date||''}"></div>
+        <div class="full"><label>Office / business address</label><input id="f_offaddr" value="${esc(d?.office_address||'')}" placeholder="e.g. Brgy. San Isidro, San Fernando, Pampanga"></div>
+        <div><label>Travel budget (PHP)</label><input type="number" id="f_tb" value="${d?.travel_budget||0}"></div>
+      </div>
+    </details>
+    ${d?.stage==='Lead'&&(d?.substage||'untouched')==='profile_done'&&!d?.handoff?`<div class="notice" style="margin-top:14px"><b>Profile collected — ready for handoff.</b> <button class="btn sm" onclick="showHandoff()">Do handoff →</button></div>`:''}
+    ${(d?.handoff||d?.stage_history?.length)?`<details style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
+      <summary style="cursor:pointer;font-weight:600;font-size:13px">Handoff & stage history</summary>
     ${d?.stage_history?.length?`<div style="margin-top:14px"><h4 style="font-size:13px;margin-bottom:8px">Stage history</h4><div class="timeline">${d.stage_history.map(h=>`<div class="tl-item"><b>${esc(h.stage)}</b><div class="tl-date">${esc(h.date)}</div></div>`).join('')}</div></div>`:''}
     ${d?.handoff?`<div class="card" style="margin-top:14px;border-left:4px solid var(--green)"><div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 style="font-size:14px">Handoff record</h3><span class="role-lg">Lead Gen → Sales Agent</span></div>
       <div class="grid2" style="font-size:13px">
@@ -652,8 +664,7 @@ function buildDealModal(){
         <div><b>Meeting</b><br>${esc(d.handoff.meeting_date)}</div><div><b>Assigned to</b><br>${esc(userName(d.handoff.sa_agent_id))}</div>
         <div class="full"><b>Profile collected</b><br>${esc(d.handoff.client_info)}</div>
       </div></div>`:''}
-    ${d?.stage==='Lead'&&(d?.substage||'untouched')==='profile_done'&&!d?.handoff?`<div class="notice" style="margin-top:14px"><b>Profile collected — ready for handoff.</b> <button class="btn sm" onclick="showHandoff()">Do handoff →</button></div>`:''}
-    ${(d?.stage==='Closed Sale'||d?.status==='won')?buildCollectionTranches(d):''}`;
+    </details>`:''}`;
   }
 
   if(MODAL_TAB==='Milestones'&&d){
@@ -670,12 +681,17 @@ function buildDealModal(){
         </div>`).join('')}</div>`).join('')}`;
   }
 
-  if(MODAL_TAB==='Notes'&&d){
-    // Discovery Call Template: show when substage=engaged and no discovery note yet
-    const hasDiscovery=DEAL_DATA.activities.some(a=>/\bPain\b.*\bTrigger\b/i.test(a.note)||a.type==='Discovery');
-    const showDiscTpl=d.substage==='engaged'&&!hasDiscovery;
-    const discTpl=showDiscTpl?`<details style="margin-bottom:12px;border:1px solid #D98E1B33;border-radius:8px;background:#FFFBEB" open>
-      <summary style="padding:8px 12px;font-weight:600;font-size:13px;cursor:pointer;color:#92400E">📋 Discovery Call Template — fill and Add Note</summary>
+  if(MODAL_TAB==='Activity'&&d){
+    // One timeline for everything an agent does on a deal. Every entry resets the idle clock.
+    const hasDiscovery=DEAL_DATA.activities.some(a=>a.type==='Discovery');
+    const isLead=d.stage==='Lead';
+    if(!ACT_TYPE)ACT_TYPE=(isLead&&d.substage==='engaged'&&!hasDiscovery)?'Discovery':'Note';
+    const types=['Note','Call','Visit',...(isLead||hasDiscovery?['Discovery']:[])];
+    const seg=`<div style="background:#EDEDE5;border-radius:8px;padding:3px;display:inline-flex;flex-wrap:wrap;gap:2px;margin-bottom:10px">${types.map(t=>`<button class="btn sm ${ACT_TYPE===t?'':'sec'}" style="${ACT_TYPE===t?'':'background:transparent;border:none'}" onclick="ACT_TYPE='${t}';render()">${t==='Visit'?'Visit report':t==='Discovery'?'Discovery call':t}</button>`).join('')}</div>`;
+    let form='';
+    if(ACT_TYPE==='Discovery'){
+      form=`<div style="border:1px solid #D98E1B33;border-radius:8px;background:#FFFBEB;margin-bottom:14px">
+        ${isLead&&!hasDiscovery?'<div class="sub" style="padding:8px 12px 0;color:#92400E">Required before this lead can move past “Engaged”.</div>':''}
       <div style="padding:10px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
         <label style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;color:#92400E">Pain</span><textarea id="disc_pain" rows="2" placeholder="What operational pain are they feeling?" style="font-size:12px;resize:vertical"></textarea></label>
         <label style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;color:#92400E">Trigger</span><textarea id="disc_trigger" rows="2" placeholder="What event forced action now?" style="font-size:12px;resize:vertical"></textarea></label>
@@ -684,16 +700,39 @@ function buildDealModal(){
         <label style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;color:#92400E">ROI angle</span><input id="disc_roi" placeholder="Mortality? FCR? Density? Energy?" style="font-size:12px"></label>
         <label style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;color:#92400E">Next step agreed</span><input id="disc_next" placeholder="What did both sides commit to?" style="font-size:12px"></label>
       </div>
-      <div style="padding:4px 12px 10px"><button class="btn sm" onclick="addDiscoveryNote('${d.id}')">📋 Save Discovery Note</button></div>
-    </details>`:'';
-    content=`${discTpl}<div class="row" style="margin-bottom:14px">
-      <input id="new_note" placeholder="Note — what was said, decided, or flagged…" style="flex:1" onkeydown="if(event.key==='Enter')addNote('${d.id}')">
-      <input id="note_by" value="${esc(PROFILE.name)}" style="width:140px">
-      <button class="btn sm" onclick="addNote('${d.id}')">Add</button></div>
-    <div class="timeline">
-      ${DEAL_DATA.activities.slice().reverse().map(a=>`<div class="tl-item"><b>${esc(a.by_name||'—')}</b> — ${esc(a.note)}<div class="tl-date">${a.created_at?.slice(0,10)} · ${esc(a.type)}</div></div>`).join('')}
-      ${DEAL_DATA.activities.length===0?'<div class="sub">No notes yet.</div>':''}
-    </div>`;
+        <div style="padding:4px 12px 10px"><button class="btn sm" onclick="addDiscoveryNote('${d.id}')">Save discovery call</button></div>
+      </div>`;
+    }else if(ACT_TYPE==='Visit'){
+      form=`<div style="margin-bottom:14px"><div class="grid2">
+        <div><label>Date</label><input type="date" id="r_date" value="${today()}"></div>
+        <div><label>Purpose</label><select id="r_purpose">${['Site inspection','Proposal presentation','Follow-up meeting','Signing / collection','Client check-in','Other'].map(p=>`<option>${p}</option>`).join('')}</select></div>
+        <div class="full"><label>Who was met</label><input id="r_who"></div>
+        <div class="full"><label>Outcome (be specific)</label><textarea id="r_outcome" rows="3"></textarea></div>
+        <div><label>Next action committed</label><input id="r_next"></div>
+        <div><label>Travel cost (PHP)</label><input type="number" id="r_cost" value="0"></div>
+      </div>
+      <button class="btn sm" style="margin-top:8px" onclick="submitReport('${d.id}')">Save visit report</button>
+      <div class="sub" style="margin-top:4px">Required within 24 hours of every trip.</div></div>`;
+    }else{
+      form=`<div class="row" style="margin-bottom:14px">
+        <input id="new_note" placeholder="${ACT_TYPE==='Call'?'Call — who you spoke to, what was agreed…':'Note — what was said, decided, or flagged…'}" style="flex:1" onkeydown="if(event.key==='Enter')addNote('${d.id}','${ACT_TYPE}')">
+        <button class="btn sm" onclick="addNote('${d.id}','${ACT_TYPE}')">Add</button></div>`;
+    }
+    const items=[
+      ...DEAL_DATA.activities.map(a=>({t:a.created_at||'',html:`<div class="tl-item" style="${a.type==='Milestone'||a.type==='Quotation ready'?'opacity:.65':''}"><b>${esc(a.by_name||'—')}</b> — <span style="white-space:pre-wrap">${esc(a.note)}</span><div class="tl-date">${a.created_at?.slice(0,10)} · ${esc(a.type)}</div></div>`})),
+      ...DEAL_DATA.reports.map(r=>({t:(r.created_at||r.date||''),html:`<div class="tl-item"><div class="card" style="padding:10px 12px;margin:0">
+        <div class="row" style="justify-content:space-between;margin-bottom:4px"><b>🚗 Visit — ${esc(r.purpose)}</b><span class="sub">${esc(r.date)} · ${peso(r.cost)}</span></div>
+        <div class="sub">Met: ${esc(r.who_met)}</div>
+        <div style="margin:6px 0;white-space:pre-wrap;font-size:13px">${esc(r.outcome)}</div>
+        <div class="sub">Next: ${esc(r.next_action)}</div>
+        ${r.ai_review?`<div class="notice" style="margin-top:8px"><b>AI Coach review</b><br><span style="white-space:pre-wrap;font-size:12.5px">${esc(r.ai_review)}</span></div>`:''}
+        <button class="btn sm sec" style="margin-top:8px" onclick="aiReviewReport('${r.id}','${d.id}')">✨ AI review</button></div></div>`}))
+    ].sort((x,y)=>y.t.localeCompare(x.t));
+    content=`${seg}${form}<div class="timeline">${items.map(i=>i.html).join('')||'<div class="sub">No activity yet.</div>'}</div>`;
+  }
+
+  if(MODAL_TAB==='Collections'&&d){
+    content=buildCollectionTranches(d);
   }
 
   if(MODAL_TAB==='Docs'&&d){
@@ -707,7 +746,6 @@ function buildDealModal(){
           <div style="font-weight:600">${esc(q.house_model||d.house_model||'')} · ${q.num_bldgs||d.num_bldgs||1} building${(q.num_bldgs||1)>1?'s':''}</div>
           <div class="sub">${esc(q.scope||d.scope||'')}${q.special_notes?' · '+esc(q.special_notes):''}</div>
           <div class="sub">Requested by ${esc(q.crm_users?.name||'—')} · ${q.created_at?.slice(0,10)}</div>
-          ${q.discount_pct?`<div class="sub" style="color:var(--red)">Discount: ${q.discount_pct}%${q.approved_by?' · Approved by '+esc(q.approved_by):' <b style="color:var(--red)">⚠ Pending approval</b>'}</div>`:''}
         </div>
         ${statusChip}
       </div>`;
@@ -792,30 +830,6 @@ function buildDealModal(){
     </div>`;
   }
 
-  if(MODAL_TAB==='Visit Reports'&&d){
-    content=`<div style="margin-bottom:16px">
-      <h4 style="font-size:13px;margin-bottom:10px">Log visit report</h4>
-      <div class="grid2">
-        <div><label>Date</label><input type="date" id="r_date" value="${today()}"></div>
-        <div><label>Purpose</label><select id="r_purpose">${['Site inspection','Proposal presentation','Follow-up meeting','Signing / collection','Client check-in','Other'].map(p=>`<option>${p}</option>`).join('')}</select></div>
-        <div class="full"><label>Who was met</label><input id="r_who"></div>
-        <div class="full"><label>Outcome (be specific)</label><textarea id="r_outcome" rows="4"></textarea></div>
-        <div><label>Next action committed</label><input id="r_next"></div>
-        <div><label>Travel cost (PHP)</label><input type="number" id="r_cost" value="0"></div>
-      </div>
-      <button class="btn sm" style="margin-top:8px" onclick="submitReport('${d.id}')">Save report</button>
-    </div>
-    ${DEAL_DATA.reports.slice().reverse().map(r=>`<div class="card" style="margin-bottom:8px;padding:12px">
-      <div class="row" style="justify-content:space-between;margin-bottom:4px"><b>${esc(r.purpose)}</b><span class="sub">${esc(r.date)} · ${peso(r.cost)}</span></div>
-      <div class="sub">Met: ${esc(r.who_met)}</div>
-      <div style="margin:6px 0;white-space:pre-wrap;font-size:13px">${esc(r.outcome)}</div>
-      <div class="sub">Next: ${esc(r.next_action)}</div>
-      ${r.ai_review?`<div class="notice" style="margin-top:8px"><b>AI Coach review</b><br><span style="white-space:pre-wrap;font-size:12.5px">${esc(r.ai_review)}</span></div>`:''}
-      <button class="btn sm sec" style="margin-top:8px" onclick="aiReviewReport('${r.id}','${d.id}')">✨ AI review</button>
-    </div>`).join('')}
-    ${DEAL_DATA.reports.length===0?'<div class="empty">No visit reports. Required within 24 hours of every trip.</div>':''}`;
-  }
-
   const spent=DEAL_DATA.reports.reduce((a,r)=>a+(+r.cost||0),0);
   const budget=+(d?.travel_budget||0);
   return`<div class="overlay">
@@ -827,7 +841,7 @@ function buildDealModal(){
     ${content}
     <div class="row" style="margin-top:20px;flex-wrap:wrap">
       ${isNew||MODAL_TAB==='Profile'?`<button class="btn" onclick="saveDeal(${isNew?'null':`'${d.id}'`})">${isNew?'Create lead':'Save changes'}</button>`:
-        `<div class="sub" style="font-size:11px">✓ ${MODAL_TAB} saves automatically</div>`}
+        (MODAL_TAB==='Collections'?'':`<div class="sub" style="font-size:11px">✓ ${MODAL_TAB} saves automatically</div>`)}
       ${!isNew&&d.status==='open'&&(PROFILE.role==='Sales Agent'||PROFILE.role==='Sales Head')?`
         <button class="btn" style="background:var(--blue)" onclick="markWon('${d.id}')">Mark WON</button>
         <button class="btn warn" onclick="markLost('${d.id}')">Mark LOST</button>`:''}
@@ -918,20 +932,20 @@ function buildCollectionTranches(d){
       <input id="tr_cdate_${t.key}" type="date" value="${existing.collected_date||''}" placeholder="Date collected" style="font-size:12px;${collected?'':'opacity:0.4'}">
     </div>`;
   }).join('');
-  const totalAmt=tr.reduce((s,t)=>s+(+t.amount||0),0);
+  const totalAmt=+d.value||tr.reduce((s,t)=>s+(+t.amount||0),0);
   const totalCollected=tr.filter(t=>t.collected).reduce((s,t)=>s+(+t.amount||0),0);
   const outstanding=totalAmt-totalCollected;
-  return`<div style="margin-top:16px;border-top:2px solid var(--green);padding-top:12px">
-    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+  return`<div>
+    <div class="row" style="justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
       <h4 style="font-size:13px;margin:0">💰 Collection Tranches</h4>
-      <div class="sub">Total: ${peso(totalAmt)} · Collected: <span style="color:var(--green);font-weight:600">${peso(totalCollected)}</span> · Outstanding: <span style="color:${outstanding>0?'var(--red)':'var(--green)'};font-weight:600">${peso(outstanding)}</span></div>
+      <div class="sub">Contract: ${peso(totalAmt)} · Collected: <span style="color:var(--green);font-weight:600">${peso(totalCollected)}</span> · Outstanding: <span style="color:${outstanding>0?'var(--red)':'var(--green)'};font-weight:600">${peso(outstanding)}</span></div>
     </div>
-    <div style="min-width:600px;overflow-x:auto">
+    <div style="overflow-x:auto"><div style="min-width:600px">
       <div style="display:grid;grid-template-columns:140px 1fr 120px 110px 1fr;gap:8px;padding:0 0 5px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);border-bottom:2px solid var(--line)">
         <span>Tranche</span><span>Amount (PHP)</span><span>Due Date</span><span>Status</span><span>Date Collected</span>
       </div>
       ${rows}
-    </div>
+    </div></div>
     <button class="btn sm" style="margin-top:10px" onclick="saveCollectionTranches('${d.id}')">Save tranches</button>
   </div>`;
 }
@@ -945,7 +959,8 @@ async function saveCollectionTranches(dealId){
     collected:el(`tr_col_${t.key}`)?.checked||false,
     collected_date:g(`tr_cdate_${t.key}`)||null
   }));
-  await SB.from('crm_deals').update({collection_tranches:tranches}).eq('id',dealId);
+  const {error}=await db.updateDeal(dealId,{collection_tranches:tranches});
+  if(error){alert('Not saved: '+error.message);return;}
   await loadAll();
   const updated=DEALS.find(x=>x.id===dealId);if(updated)MODAL.deal=updated;
   render();
@@ -971,27 +986,92 @@ async function saveDeal(id){
   if(deal&&deal.stage!==resolvedStage)sh.push({stage:resolvedStage,date:today()});
   const nextAction=v('f_na');
   const nextActionDate=v('f_nad')||null;
+  const newSub=v('f_ss')||deal?.substage||'untouched';
+  // Discovery gate: a lead can't leave "Engaged" until the discovery note is logged
+  const SUB_ORDER=SS_SUB.map(x=>x.key);
+  if(deal&&SUB_ORDER.indexOf(newSub)>SUB_ORDER.indexOf('engaged')&&SUB_ORDER.indexOf(deal.substage||'untouched')<=SUB_ORDER.indexOf('engaged')
+     &&!(DEAL_DATA.activities||[]).some(a=>a.type==='Discovery')){
+    alert('Log the discovery call first (Activity tab → Discovery) before moving this lead to "'+(SS_SUB.find(x=>x.key===newSub)?.label||newSub)+'".');
+    return;
+  }
+  const moved=deal&&(deal.stage!==resolvedStage||(deal.substage||'untouched')!==newSub);
   const payload={
     ...(id?{id}:{}),
     client:v('f_client'),farm:v('f_farm'),location:v('f_loc'),value:+v('f_val')||0,
     ss_agent_id:v('f_ssag')||null,sa_agent_id:assigneeId,
-    source:v('f_src'),lead_source:v('f_lead_src')||null,scope:v('f_scope'),farm_type:v('f_ft'),house_model:v('f_hm'),num_bldgs:+v('f_nb')||1,
-    stage:resolvedStage,substage:v('f_ss')||'untouched',gates,
+    source:v('f_src'),scope:v('f_scope'),farm_type:v('f_ft'),house_model:v('f_hm'),num_bldgs:+v('f_nb')||1,
+    stage:resolvedStage,substage:newSub,gates,
     next_action:nextAction,next_action_date:nextActionDate,
     target_date:v('f_td')||null,travel_budget:+v('f_tb')||0,
     contact:v('f_contact'),email:v('f_email'),office_address:v('f_offaddr')||'',reqs:deal?.reqs||'',
     stage_history:sh,milestones:deal?.milestones||{},
+    ...((moved||!deal)?{last_activity_at:new Date().toISOString()}:{}),
     updated_at:new Date().toISOString()
   };
-  const {data:saved}=await db.upsertDeal(payload);
+  const {data:saved,error:saveErr}=await db.upsertDeal(payload);
+  if(saveErr){alert('Not saved: '+saveErr.message);return;}
   const dealId=saved?.id||id;
   const mergedDeal={...payload,stage};
   if(dealId)await autoCreateTasks(dealId,mergedDeal,assigneeId,nextAction,nextActionDate);
   await loadAll();closeModal();
 }
-async function markWon(id){
-  if(!confirm('Confirm: signed pro-forma invoice, cleared downpayment, and collected PDCs?'))return;
-  await db.upsertDeal({id,status:'won',won_date:today(),stage:'Closed Sale',updated_at:new Date().toISOString()});
+// ── CLOSE AS WON (discount logged here) ──
+const DISCOUNT_APPROVAL_PCT=3; // discounts above this need Sales Head / Dr. Manahan approval (working assumption)
+function markWon(id){
+  const d=DEALS.find(x=>x.id===id)||MODAL?.deal;
+  const approvers=[...USERS.filter(u=>u.role==='Sales Head').map(u=>u.name),'Dr. Manahan'];
+  const panel=document.createElement('div');
+  panel.id='won-panel';
+  panel.style.cssText='position:fixed;inset:0;background:rgba(20,37,28,.6);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
+  panel.innerHTML=`<div style="background:#fff;border-radius:12px;padding:24px;max-width:440px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.3)">
+    <h3 style="font-size:16px;font-weight:700;margin-bottom:4px">Close as WON — ${esc(d?.client||'')}</h3>
+    <div class="sub" style="margin-bottom:14px">Log the final price. Any gap vs. the quoted price is recorded as a discount.</div>
+    <div class="grid2">
+      <div><label>Quoted price (PHP)</label><input type="number" id="won_quoted" value="${d?.quoted_value||d?.value||0}" oninput="wonCalc()"></div>
+      <div><label>Final contract price (PHP)</label><input type="number" id="won_final" value="${d?.value||0}" oninput="wonCalc()"></div>
+    </div>
+    <div id="won_disc" style="margin:10px 0;font-size:13px"></div>
+    <div id="won_appr_row" style="display:none;margin-bottom:10px">
+      <label>Discount approved by</label>
+      <select id="won_appr" style="width:100%"><option value="">Select approver…</option>${approvers.map(a=>`<option>${esc(a)}</option>`).join('')}</select>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;text-transform:none;letter-spacing:0;margin:6px 0 16px;cursor:pointer;color:var(--ink)">
+      <input type="checkbox" id="won_conf" style="width:auto"> Signed pro-forma, cleared downpayment, PDCs collected
+    </label>
+    <div class="row" style="gap:8px">
+      <button class="btn" style="background:var(--blue)" onclick="confirmMarkWon('${id}')">Confirm WON</button>
+      <button class="btn sec" onclick="document.getElementById('won-panel').remove()">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(panel);
+  wonCalc();
+}
+function wonDiscount(){
+  const q=+el('won_quoted')?.value||0,f=+el('won_final')?.value||0;
+  return q>0&&f<q?Math.round((q-f)/q*10000)/100:0;
+}
+function wonCalc(){
+  const pct=wonDiscount(),q=+el('won_quoted')?.value||0,f=+el('won_final')?.value||0;
+  const needs=pct>DISCOUNT_APPROVAL_PCT;
+  el('won_disc').innerHTML=pct>0
+    ?`Discount: <b style="color:${needs?'var(--red)':'inherit'}">${pct}%</b> (${peso(q-f)})${needs?` — above ${DISCOUNT_APPROVAL_PCT}%, approval required`:''}`
+    :'<span class="sub">No discount.</span>';
+  el('won_appr_row').style.display=needs?'block':'none';
+}
+async function confirmMarkWon(id){
+  if(!el('won_conf')?.checked){alert('Confirm pro-forma, downpayment and PDCs first.');return;}
+  const q=+el('won_quoted').value||0,f=+el('won_final').value||0;
+  if(!f){alert('Enter the final contract price.');return;}
+  const pct=wonDiscount(),appr=el('won_appr')?.value||'';
+  if(pct>DISCOUNT_APPROVAL_PCT&&!appr){alert('A '+pct+'% discount needs an approver.');return;}
+  const d=DEALS.find(x=>x.id===id);
+  const sh=[...(d?.stage_history||[])];if(d?.stage!=='Closed Sale')sh.push({stage:'Closed Sale',date:today()});
+  const {error}=await db.upsertDeal({id,status:'won',won_date:today(),stage:'Closed Sale',stage_history:sh,
+    value:f,quoted_value:q||f,discount_pct:pct,discount_approved_by:pct>DISCOUNT_APPROVAL_PCT?appr:null,
+    last_activity_at:new Date().toISOString(),updated_at:new Date().toISOString()});
+  if(error){alert('Not saved: '+error.message);return;}
+  await db.addActivity({deal_id:id,type:'Won',note:`Closed WON at ${peso(f)}${pct>0?` — ${pct}% discount off ${peso(q)}${appr?' (approved by '+appr+')':''}`:''}.`,by_name:PROFILE.name});
+  document.getElementById('won-panel')?.remove();
   await loadAll();closeModal();
 }
 function markLost(id){
@@ -1076,18 +1156,25 @@ async function toggleMs(dealId,key,on){
   const {data:a}=await db.activities(dealId);DEAL_DATA.activities=a||[];
   render();
 }
-async function addNote(dealId){
-  const note=el('new_note')?.value?.trim(),by=el('note_by')?.value||PROFILE.name;
+// Mirror the DB trigger locally so the card's idle badge updates without a reload
+function touchLocal(dealId){const t=new Date().toISOString();const d=DEALS.find(x=>x.id===dealId);if(d)d.last_activity_at=t;if(MODAL?.deal?.id===dealId)MODAL.deal.last_activity_at=t;}
+async function addNote(dealId,type='Note'){
+  const note=el('new_note')?.value?.trim();
   if(!note)return;
-  await db.addActivity({deal_id:dealId,type:'Note',note,by_name:by});
+  const {error}=await db.addActivity({deal_id:dealId,type,note,by_name:PROFILE.name});
+  if(error){alert('Not saved: '+error.message);return;}
+  touchLocal(dealId);
   const {data:a}=await db.activities(dealId);DEAL_DATA.activities=a||[];render();
 }
 async function addDiscoveryNote(dealId){
   const g=id=>el(id)?.value?.trim()||'—';
   const pain=g('disc_pain'),trigger=g('disc_trigger'),timeline=g('disc_timeline'),
         budget=g('disc_budget'),roi=g('disc_roi'),next=g('disc_next');
+  if(pain==='—'&&trigger==='—'){alert('Fill in at least Pain and Trigger.');return;}
   const note=`Discovery Call\nPain: ${pain}\nTrigger: ${trigger}\nTimeline: ${timeline}\nBudget signal: ${budget}\nROI angle: ${roi}\nNext step agreed: ${next}`;
-  await db.addActivity({deal_id:dealId,type:'Discovery',note,by_name:PROFILE.name});
+  const {error}=await db.addActivity({deal_id:dealId,type:'Discovery',note,by_name:PROFILE.name});
+  if(error){alert('Not saved: '+error.message);return;}
+  touchLocal(dealId);ACT_TYPE='Note';
   const {data:a}=await db.activities(dealId);DEAL_DATA.activities=a||[];render();
 }
 async function addDocLink(dealId){
@@ -1137,7 +1224,9 @@ async function delDoc(docId,dealId){
 async function submitReport(dealId){
   const v=k=>el(k)?.value;
   if(!v('r_outcome')?.trim()){alert('Outcome required.');return;}
-  await db.addReport({deal_id:dealId,date:v('r_date'),purpose:v('r_purpose'),who_met:v('r_who'),outcome:v('r_outcome'),next_action:v('r_next'),cost:+v('r_cost')||0});
+  const {error}=await db.addReport({deal_id:dealId,date:v('r_date'),purpose:v('r_purpose'),who_met:v('r_who'),outcome:v('r_outcome'),next_action:v('r_next'),cost:+v('r_cost')||0});
+  if(error){alert('Not saved: '+error.message);return;}
+  touchLocal(dealId);ACT_TYPE='Note';
   const {data}=await db.reports(dealId);DEAL_DATA.reports=data||[];render();
 }
 async function aiReviewReport(reportId,dealId){
@@ -1607,10 +1696,7 @@ function buildKPI(){
       Math.round(allMoves.reduce((a,d,i,arr)=>i===0?a:a+(new Date(d)-new Date(arr[i-1]))/(1000*60*60*24),0)/(allMoves.length-1)):null;
 
     // Stale deals — open deals with no activity (updated_at) in 14+ days
-    const stale=openDeals.filter(d=>{
-      const lastTouch=d.updated_at?.slice(0,10)||d.created_at?.slice(0,10)||'';
-      return lastTouch&&daysSince(lastTouch)>=14;
-    }).length;
+    const stale=openDeals.filter(isStale).length;
 
     // Quotation-to-close — % of deals that reached Proposal stage and were won
     const proposalPlus=['Proposal','Bidding / Negotiation','Committed','Closed Sale'];
@@ -1759,8 +1845,6 @@ function showQuoteReqForm(dealId){
       <div><label>Deadline needed by</label><input type="date" id="qrf_deadline"></div>
       <div><label>Scope</label><select id="qrf_scope">${SCOPES.map(s=>`<option ${(d?.scope||'')=== s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div><label>Assign to</label><select id="qrf_est">${estOpts}</select></div>
-      <div><label>Max discount allowed (%)</label><input type="number" id="qrf_disc" min="0" max="30" step="0.5" placeholder="e.g. 5" style="font-size:13px"></div>
-      <div><label>Discount approved by</label><input id="qrf_appr" placeholder="Sales Head name (if any)" style="font-size:13px"></div>
       <div class="full"><label>Special requirements / site notes</label><textarea id="qrf_notes" rows="3" placeholder="Access issues, special dimensions, client requests, bank requirements…"></textarea></div>
     </div>
     <div class="row" style="margin-top:8px;gap:8px">
@@ -1781,8 +1865,6 @@ async function submitQuoteReq(dealId){
     num_bldgs:+v('qrf_nb')||1,
     special_notes:v('qrf_notes'),
     deadline:v('qrf_deadline')||null,
-    discount_pct:v('qrf_disc')?parseFloat(v('qrf_disc')):null,
-    approved_by:v('qrf_appr')||null,
     status:'pending'
   };
   await db.addQuoteReq(payload);
@@ -1946,7 +2028,7 @@ async function uploadQReqPDF(file,reqId,dealId){
   // Increment quote_rev counter on the deal
   const deal=DEALS.find(d=>d.id===dealId);
   const newRev=(deal?.quote_rev||0)+1;
-  await SB.from('crm_deals').update({quote_rev:newRev}).eq('id',dealId);
+  await db.updateDeal(dealId,{quote_rev:newRev});
   if(prog)prog.innerHTML='';
   await loadAll();render();
 }
