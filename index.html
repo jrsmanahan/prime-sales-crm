@@ -763,7 +763,7 @@ function buildDealModal(){
 
   const spent=DEAL_DATA.reports.reduce((a,r)=>a+(+r.cost||0),0);
   const budget=+(d?.travel_budget||0);
-  return`<div class="overlay" onclick="if(event.target===this)closeModal()">
+  return`<div class="overlay">
   <div class="modal">
     <button class="modal-close" onclick="closeModal()">×</button>
     <h2 style="margin-bottom:4px">${isNew?'New lead':esc(d.client)}</h2>
@@ -1067,7 +1067,7 @@ function buildApptModal(){
   const dt=MODAL.date||today();
   const a=MODAL.appt||null;
   const purposes=['Site inspection','Proposal presentation','Follow-up meeting','Bank meeting','Integrator meeting','Signing / collection','Client check-in','Other'];
-  return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
+  return`
   <div class="modal" style="max-width:520px">
     <button class="modal-close" onclick="MODAL=null;render()">×</button>
     <h2 style="margin-bottom:16px">${a?'Edit appointment':'Submit appointment'}</h2>
@@ -1151,7 +1151,7 @@ function buildTaskModal(){
   const spOpts='<option value="">Unassigned</option>'+USERS.map(u=>`<option value="${u.id}" ${t?.assignee_id===u.id?'selected':''}>${esc(u.name)}</option>`).join('');
   const dealOpts='<option value="">None</option>'+DEALS.filter(d=>d.status==='open').map(d=>`<option value="${d.id}" ${t?.deal_id===d.id?'selected':''}>${esc(d.client)}</option>`).join('');
   const typeOpts=TASK_TYPES.map(tp=>`<option ${t?.type===tp?'selected':''}>${tp}</option>`).join('');
-  return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
+  return`
   <div class="modal" style="max-width:520px">
     <button class="modal-close" onclick="MODAL=null;render()">×</button>
     <h2 style="margin-bottom:16px">${t?'Edit':'New'} task</h2>
@@ -1228,7 +1228,7 @@ function buildTravel(){
   ${MODAL?.type==='travel'?buildTravelModal():''}`;
 }
 function buildTravelModal(){
-  return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
+  return`
   <div class="modal" style="max-width:520px">
     <button class="modal-close" onclick="MODAL=null;render()">×</button>
     <h2 style="margin-bottom:16px">Travel request</h2>
@@ -1277,7 +1277,7 @@ function buildPlay(){
 }
 function buildPlaybookModal(){
   const it=MODAL.item;
-  return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
+  return`
   <div class="modal" style="max-width:560px">
     <button class="modal-close" onclick="MODAL=null;render()">×</button>
     <h2 style="margin-bottom:16px">${it?'Edit':'Add'} — ${PB_CAT}</h2>
@@ -1316,7 +1316,7 @@ function buildRules(){
 }
 function buildRuleModal(){
   const r=MODAL.rule;
-  return`<div class="overlay" onclick="if(event.target===this){MODAL=null;render()}">
+  return`
   <div class="modal" style="max-width:540px">
     <button class="modal-close" onclick="MODAL=null;render()">×</button>
     <h2 style="margin-bottom:16px">${r?'Edit':'Add'} rule</h2>
