@@ -605,7 +605,6 @@ function buildDealModal(){
         </div></div>
       <div><label>Next action</label><input id="f_na" value="${esc(d?.next_action||'')}"></div>
       <div><label>Next action date</label><input type="date" id="f_nad" value="${d?.next_action_date||''}"></div>
-      <div class="full"><label>Requirements / notes</label><textarea id="f_reqs" rows="3">${esc(d?.reqs||'')}</textarea></div>
     </div>
     ${d?.stage_history?.length?`<div style="margin-top:14px"><h4 style="font-size:13px;margin-bottom:8px">Stage history</h4><div class="timeline">${d.stage_history.map(h=>`<div class="tl-item"><b>${esc(h.stage)}</b><div class="tl-date">${esc(h.date)}</div></div>`).join('')}</div></div>`:''}
     ${d?.handoff?`<div class="card" style="margin-top:14px;border-left:4px solid var(--green)"><div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 style="font-size:14px">Handoff record</h3><span class="role-lg">Lead Gen → Sales Agent</span></div>
@@ -859,7 +858,7 @@ async function saveDeal(id){
     stage,substage:v('f_ss')||'untouched',gates,
     next_action:nextAction,next_action_date:nextActionDate,
     target_date:v('f_td')||null,travel_budget:+v('f_tb')||0,
-    contact:v('f_contact'),email:v('f_email'),office_address:v('f_offaddr')||'',reqs:v('f_reqs'),
+    contact:v('f_contact'),email:v('f_email'),office_address:v('f_offaddr')||'',reqs:deal?.reqs||'',
     stage_history:sh,milestones:deal?.milestones||{},
     updated_at:new Date().toISOString()
   };
