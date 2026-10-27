@@ -40,6 +40,7 @@ a{color:var(--blue)}
 .chip.r{background:var(--red-lt);color:var(--red)}
 .chip.b{background:var(--blue-lt);color:var(--blue)}
 .chip.n{background:#EEEEE7;color:var(--steel)}
+.chip.w{background:var(--red-lt);color:var(--red)}
 .notice{background:var(--amber-lt);border:1px solid #EAD2A4;border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:12px}
 .empty{color:var(--mut);font-size:13px;padding:18px;text-align:center}
 header{background:var(--ink);color:#fff;position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:20px;padding:0 20px;flex-wrap:wrap}
@@ -155,8 +156,8 @@ const SS_SUB=[
 const SA_STAGES=['Evaluation','Qualified','Site Inspection','Proposal','Bidding / Negotiation','Committed','Closed Sale'];
 const SA_FLAGS={'Evaluation':7,'Qualified':14,'Site Inspection':21,'Proposal':30,'Bidding / Negotiation':30,'Committed':21,'Closed Sale':7};
 const TOUCH=['Bidding / Negotiation','Committed'];
-const SCOPES=['Full build (prefab + equipment)','Prefab building only','Equipment supply only','Parts / System supply','Retro / Rehab','Conversion to CCS4','Conversion to Breeder from CCS3','Conversion to MTC from CCS3'];
-const FARM_TYPES=['Broiler','Breeder','Layer / Multi-tier','Other'];
+const SCOPES=['Full build (prefab + equipment)','Prefab building only','Equipment supply only','Parts / System supply','Retro / Rehab','Conversion to CCS4','Conversion to Breeder from CCS3','Conversion to MTC from CCS3','Fermentation Tank'];
+const FARM_TYPES=['Broiler','Breeder','Layer','Multi-tier Cage','Other'];
 const SOURCES=['Referral','Integrator program','Walk-in / Inbound','Agent / Broker','Self-generated'];
 const DOC_TYPES=['Quotation','Official Receipt (OR)','Pro-forma Invoice','Site Inspection Report','Contract / PO','Letter of Intent','Bank Documents','Permit','Other'];
 const QUOTE_STATUS=['Draft','Pending engineering review','Engineering approved','Sent to client','Revised','Final / signed'];
@@ -241,7 +242,15 @@ const db={
 };
 
 // ── render engine ──
-function render(){document.getElementById('app').innerHTML=buildApp()}
+function render(){
+  const ae=document.activeElement;
+  const focId=ae&&ae.id?ae.id:null;
+  const focVal=ae&&ae.id?ae.value:null;
+  const selStart=ae&&ae.id?ae.selectionStart:null;
+  const selEnd=ae&&ae.id?ae.selectionEnd:null;
+  document.getElementById('app').innerHTML=buildApp();
+  if(focId){const el=document.getElementById(focId);if(el){el.focus();try{el.setSelectionRange(selStart,selEnd);}catch(e){}}}
+}
 function el(id){return document.getElementById(id)}
 function userName(id){return USERS.find(u=>u.id===id)?.name||'—'}
 function ssAgent(d){return userName(d.ss_agent_id)}
@@ -283,7 +292,7 @@ function buildApp(){
     ['dash','Dashboard'],['pipe','Pipeline'],['cal','Calendar'],
     ['tasks','Tasks'],['travel','Travel'],['play','Playbook'],['rules','Rulebook'],['ai','AI Coach'],
     ...(role==='Sales Head'?[['kpi','KPIs'],['team','Team']]:[]),
-    ...(role==='Estimator'?[['quotes','Quotations']]:[]),
+    ...(role==='Estimator'?[['pipe','Pipeline'],['quotes','Quotations']]:[]),
     ...(role==='Sales Head'?[['quotes','Quotations']]:[] )
   ];
   const navBtns=tabs.map(([k,l])=>`<button class="${TAB===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('');
@@ -462,7 +471,7 @@ function buildPipe(){
         ${cards||'<div class="empty">empty</div>'}</div>`;
     }).join('');
     return hdr+`<div class="filterbar">
-      <input placeholder="Search…" value="${esc(PIPE_SEARCH)}" oninput="PIPE_SEARCH=this.value;render()" style="min-width:180px;width:auto">
+      <input id="pipe-search" placeholder="Search…" value="${esc(PIPE_SEARCH)}" oninput="PIPE_SEARCH=this.value;render()" style="min-width:180px;width:auto">
       <select onchange="PIPE_SP=this.value;render()" style="width:auto">${agentOpts}</select>
       <select onchange="PIPE_STAGE=this.value;render()" style="width:auto">${ssStgOpts}</select>
       ${clearBtn}${readyN?`<span class="chip a" style="margin-left:auto">⚠ ${readyN} ready for handoff</span>`:''}
@@ -515,7 +524,7 @@ function buildPipe(){
     <td>${peso(d.value)}</td><td>${esc(saAgent(d))}</td>
     <td class="sub">${esc(d.status==='won'?'Won '+(d.won_date||''):d.lost_reason)}</td></tr>`).join('');
   return hdr+`<div class="filterbar">
-    <input placeholder="Search…" value="${esc(PIPE_SEARCH)}" oninput="PIPE_SEARCH=this.value;render()" style="min-width:180px;width:auto">
+    <input id="pipe-search" placeholder="Search…" value="${esc(PIPE_SEARCH)}" oninput="PIPE_SEARCH=this.value;render()" style="min-width:180px;width:auto">
     <select onchange="PIPE_SP=this.value;render()" style="width:auto">${agentOpts}</select>
     <select onchange="PIPE_STAGE=this.value;render()" style="width:auto">${stgOpts}</select>
     <select onchange="PIPE_SCOPE=this.value;render()" style="width:auto"><option value="">All scopes</option>${SCOPES.map(s=>`<option ${PIPE_SCOPE===s?'selected':''}>${s}</option>`).join('')}</select>
@@ -639,7 +648,7 @@ function buildDealModal(){
     const dqr=DEAL_DATA.quoteReqs||[];
     const pendingBadge=dqr.filter(q=>q.status==='pending'||q.status==='in_progress').length;
     const qrRows=dqr.map(q=>{
-      const statusChip=q.status==='quotation_submitted'?'<span class="chip g">✓ Submitted</span>':q.status==='for_review'?'<span class="chip b">For review</span>':q.status==='awaiting_suppliers'?'<span class="chip a">Awaiting suppliers</span>':q.status==='in_progress'?'<span class="chip b">In progress</span>':'<span class="chip n">Pending</span>';
+      const statusChip=q.status==='quotation_submitted'?'<span class="chip g">✓ Submitted</span>':q.status==='revision_requested'?'<span class="chip w">⚠ Revision requested</span>':q.status==='for_review'?'<span class="chip b">For review</span>':q.status==='awaiting_suppliers'?'<span class="chip a">Awaiting suppliers</span>':q.status==='in_progress'?'<span class="chip b">In progress</span>':'<span class="chip n">Pending</span>';
       return`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:${q.status==='ready'?'var(--green-lt)':q.status==='in_progress'?'var(--amber-lt)':'#F4F4EC'};margin-bottom:6px;font-size:13px">
         <div style="flex:1">
           <div style="font-weight:600">${esc(q.house_model||d.house_model||'')} · ${q.num_bldgs||d.num_bldgs||1} building${(q.num_bldgs||1)>1?'s':''}</div>
@@ -649,11 +658,12 @@ function buildDealModal(){
         ${statusChip}
       </div>`;
     }).join('');
-    const docRows=DEAL_DATA.docs.map(dc=>{
+    // Helper: render a single doc row
+    const mkDocRow=(dc)=>{
       const ext=(dc.name||'').split('.').pop().toLowerCase();
       const icon=ext==='pdf'?'📄':['jpg','jpeg','png'].includes(ext)?'🖼️':['xls','xlsx'].includes(ext)?'📊':'📎';
-      return`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px">
-        <span style="font-size:20px">${icon}</span>
+      return`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px">
+        <span style="font-size:18px">${icon}</span>
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(dc.name)}</div>
           <div class="sub">${esc(dc.type)} · ${dc.created_at?.slice(0,10)} · ${esc(dc.filed_by)}</div>
@@ -662,14 +672,50 @@ function buildDealModal(){
           :dc.link?`<a href="${esc(dc.link)}" target="_blank" rel="noopener" class="btn sm sec" style="text-decoration:none">↗ Open</a>`:''}
         <button class="btn sm sec" onclick="delDoc('${dc.id}','${d.id}')">×</button>
       </div>`;
+    };
+
+    // Quotation docs = type Quotation uploaded via the estimator path
+    const isQuoteDoc=dc=>dc.type==='Quotation'&&dc.storage_path&&dc.storage_path.includes('/quotations/');
+    const otherDocs=DEAL_DATA.docs.filter(dc=>!isQuoteDoc(dc));
+    const quoteDocs=DEAL_DATA.docs.filter(isQuoteDoc).sort((a,b)=>a.created_at>b.created_at?1:-1);
+
+    // Build one card per quotation request with all its files
+    const qrCards=dqr.map((q)=>{
+      const st2=q.status==='quotation_submitted'?'<span class="chip g">✓ Submitted</span>':q.status==='revision_requested'?'<span class="chip w">⚠ Revision requested</span>':q.status==='for_review'?'<span class="chip b">For review</span>':q.status==='awaiting_suppliers'?'<span class="chip a">Awaiting suppliers</span>':q.status==='in_progress'?'<span class="chip b">In progress</span>':'<span class="chip n">Pending</span>';
+      return`<div style="border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:10px">
+        <div style="padding:10px 12px;background:#F4F4EC;display:flex;align-items:flex-start;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:13px">${esc(q.house_model||d.house_model||'')} · ${q.num_bldgs||d.num_bldgs||1} bldg${(q.num_bldgs||1)>1?'s':''} · ${esc(q.scope||d.scope||'')}</div>
+            ${q.special_notes?`<div class="sub" style="margin-top:2px">📝 ${esc(q.special_notes)}</div>`:''}
+            <div class="sub" style="margin-top:2px">Requested by ${esc(q.crm_users?.name||'—')} · ${q.created_at?.slice(0,10)}${q.deadline?` · Due: ${q.deadline}`:''}</div>
+          </div>
+          ${st2}
+        </div>
+        ${quoteDocs.length?`<div style="padding:8px 12px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);margin-bottom:6px">${quoteDocs.length} file${quoteDocs.length>1?'s — all versions & options':''}</div>
+          ${quoteDocs.map((dc,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:${i%2===0?'#FAFAFF':'#fff'};border-radius:6px;margin-bottom:4px;font-size:13px">
+            <span style="font-size:16px">📄</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(dc.name)}</div>
+              <div class="sub">${dc.created_at?.slice(0,10)} · ${esc(dc.filed_by)}
+                ${quoteDocs.length>1?(i===0?' <span style="color:var(--steel);font-size:11px">(original)</span>':i===quoteDocs.length-1?' <span style="color:var(--green);font-size:11px">(latest)</span>':` <span style="color:var(--steel);font-size:11px">(v${i+1})</span>`):''}
+              </div>
+            </div>
+            ${dc.storage_path?`<button class="btn sm sec" onclick="downloadDoc('${dc.storage_path}','${esc(dc.name)}')">⬇ Download</button>`:''}
+            <button class="btn sm sec" onclick="delDoc('${dc.id}','${d.id}')">×</button>
+          </div>`).join('')}
+        </div>`:`<div class="sub" style="padding:10px 12px">No files yet — estimator will upload when ready.</div>`}
+      </div>`;
     }).join('');
+
+    const otherDocRows=otherDocs.map(dc=>mkDocRow(dc)).join('');
     content=`
-    ${dqr.length||PROFILE.role!=='Estimator'?`<div style="margin-bottom:14px">
+    ${dqr.length||PROFILE.role!=='Estimator'?`<div style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <h4 style="font-size:13px">Quotation requests ${pendingBadge?`<span class="chip a">${pendingBadge} pending</span>`:''}</h4>
         ${PROFILE.role!=='Estimator'?`<button class="btn sm" onclick="showQuoteReqForm('${d.id}')">+ Request quotation</button>`:''}
       </div>
-      ${qrRows||'<div class="sub" style="padding:6px 0">No quotation requests yet.</div>'}
+      ${qrCards||'<div class="sub" style="padding:6px 0">No quotation requests yet.</div>'}
       <div id="qreq-form-${d.id}"></div>
     </div><hr style="border:none;border-top:1px solid var(--line);margin-bottom:14px">`:''}
     <div id="drop-zone" ondrop="handleDrop(event,'${d.id}')" ondragover="event.preventDefault();this.style.borderColor='var(--green)';this.style.background='var(--green-lt)'" ondragleave="this.style.borderColor='#DCDCD2';this.style.background='#fff'"
@@ -686,7 +732,10 @@ function buildDealModal(){
       <button class="btn sm" onclick="addDocLink('${d.id}')">Log link</button>
     </div>
     <div id="upload-progress-${d.id}"></div>
-    <div>${docRows}${DEAL_DATA.docs.length===0?'<div class="empty">No documents yet. Drag &amp; drop files above or log a link.</div>':''}</div>`;
+    <div>
+      ${otherDocs.length?`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);margin-bottom:8px;margin-top:4px">Other documents</div>${otherDocRows}`:''}
+      ${!otherDocs.length&&!dqr.length?'<div class="empty">No documents yet. Drag &amp; drop files above or log a link.</div>':''}
+    </div>`;
   }
 
   if(MODAL_TAB==='Visit Reports'&&d){
@@ -800,7 +849,7 @@ async function saveDeal(id){
   const sh=[...(deal?.stage_history||[])];
   if(deal&&deal.stage!==stage)sh.push({stage,date:today()});
   const gates={land:el('g_land')?.checked||false,money:el('g_money')?.checked||false,market:el('g_market')?.checked||false,timeline:el('g_timeline')?.checked||false};
-  const assigneeId=v('f_sp')||deal?.sa_agent_id||null;
+  const assigneeId=v('f_sp')||null;
   const nextAction=v('f_na');
   const nextActionDate=v('f_nad')||null;
   const payload={
@@ -1570,11 +1619,12 @@ function buildQuotes(){
   const role=PROFILE.role;
   const isEst=role==='Estimator';
   const QSTATUS={
-    pending:       {label:'Pending',        color:'var(--steel)', chip:'n'},
-    in_progress:   {label:'In progress',    color:'var(--blue)',  chip:'b'},
-    awaiting_suppliers:{label:'Awaiting suppliers',color:'var(--amber)',chip:'a'},
-    for_review:    {label:'For review',     color:'#7B3FA0',      chip:'b'},
-    quotation_submitted:{label:'Quotation submitted',color:'var(--green)',chip:'g'},
+    pending:           {label:'Pending',            color:'var(--steel)', chip:'n'},
+    in_progress:       {label:'In progress',        color:'var(--blue)',  chip:'b'},
+    awaiting_suppliers:{label:'Awaiting suppliers', color:'var(--amber)', chip:'a'},
+    for_review:        {label:'For review',         color:'#7B3FA0',      chip:'b'},
+    quotation_submitted:{label:'Submitted',         color:'var(--green)', chip:'g'},
+    revision_requested:{label:'Revision requested', color:'var(--red)',   chip:'w'},
   };
   const statusOpts=Object.entries(QSTATUS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('');
   const allGroups=Object.entries(QSTATUS);
@@ -1607,17 +1657,21 @@ function buildQuotes(){
           ${showUpload?`<select onchange="updateQReqStatus('${q.id}',this.value)" style="width:auto;font-size:12px;padding:4px 8px">${Object.entries(QSTATUS).map(([k,v])=>`<option value="${k}" ${q.status===k?'selected':''}>${v.label}</option>`).join('')}</select>`:''}
         </div>
       </div>
-      ${showUpload&&q.status!=='quotation_submitted'?`
+      ${(showUpload&&!['quotation_submitted'].includes(q.status))||q.status==='revision_requested'?`
+        ${q.status==='revision_requested'?`<div class="notice" style="background:var(--red-lt);color:var(--red);margin-bottom:8px">⚠ Revision requested — please upload a corrected PDF.</div>`:''}
         <div id="qr-drop-${q.id}" ondrop="handleQReqDrop(event,'${q.id}','${q.deal_id}')"
           ondragover="event.preventDefault();this.style.borderColor='var(--green)';this.style.background='var(--green-lt)'"
           ondragleave="this.style.borderColor='#DCDCD2';this.style.background='#fff'"
           onclick="el('qr-inp-${q.id}').click()"
           style="border:2px dashed #DCDCD2;border-radius:8px;padding:14px;text-align:center;cursor:pointer;margin-top:8px;transition:all .2s;font-size:13px">
-          📎 Drag &amp; drop completed quotation PDF here, or click to browse
+          📎 Drag &amp; drop ${q.status==='revision_requested'?'revised':'completed'} quotation PDF here, or click to browse
           <input type="file" id="qr-inp-${q.id}" accept=".pdf" style="display:none" onchange="handleQReqFile(event,'${q.id}','${q.deal_id}')">
         </div>
         <div id="qr-prog-${q.id}"></div>`:''}
-      ${q.status==='quotation_submitted'&&q.doc_id?`<div style="margin-top:6px;font-size:12px;color:var(--green)">✓ PDF uploaded and saved to client docs</div>`:''}
+      ${q.status==='quotation_submitted'?`<div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${q.doc_id?`<span style="font-size:12px;color:var(--green)">✓ PDF saved to client docs</span>`:''}
+        ${role==='Sales Head'?`<button class="btn sm warn" onclick="requestRevision('${q.id}','${q.deal_id}')">Request revision</button>`:''}
+      </div>`:''}
     </div>`;
   };
 
@@ -1645,12 +1699,25 @@ function buildQuotes(){
     ${forReview.map(q=>mkCard(q,isEst)).join('')}
   </div>`:''}
 
+  ${QUOTE_REQS.filter(q=>q.status==='revision_requested').length?`<div style="margin-bottom:20px">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--red);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:var(--red);display:inline-block"></span>Revision requested (${QUOTE_REQS.filter(q=>q.status==='revision_requested').length})</div>
+    ${QUOTE_REQS.filter(q=>q.status==='revision_requested').map(q=>mkCard(q,isEst)).join('')}
+  </div>`:''}
+
   ${submitted.length?`<div style="margin-bottom:20px">
     <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--green);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:var(--green);display:inline-block"></span>Quotation submitted (${submitted.length})</div>
-    ${submitted.map(q=>mkCard(q,false)).join('')}
+    ${submitted.map(q=>mkCard(q,isEst||role==='Sales Head')).join('')}
   </div>`:''}
 
   ${!QUOTE_REQS.length?`<div class="empty" style="margin-top:40px">No quotation requests yet. Sales Agents submit requests from the Docs tab inside each deal.</div>`:''}`;
+}
+
+async function requestRevision(reqId,dealId){
+  const notes=prompt('What needs to be revised? (optional)');
+  if(notes===null)return; // cancelled
+  await db.updateQuoteReq(reqId,{status:'revision_requested'});
+  await db.addActivity({deal_id:dealId,type:'Quotation revision',note:`Revision requested by ${PROFILE.name}${notes?': '+notes:''}`,by_name:PROFILE.name});
+  await loadAll();render();
 }
 
 async function updateQReqStatus(id,status){
