@@ -41,6 +41,7 @@ a{color:var(--blue)}
 .chip.b{background:var(--blue-lt);color:var(--blue)}
 .chip.n{background:#EEEEE7;color:var(--steel)}
 .chip.w{background:var(--red-lt);color:var(--red)}
+.chip.p{background:#F3E8FF;color:#6B21A8}
 .notice{background:var(--amber-lt);border:1px solid #EAD2A4;border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:12px}
 .empty{color:var(--mut);font-size:13px;padding:18px;text-align:center}
 header{background:var(--ink);color:#fff;position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:20px;padding:0 20px;flex-wrap:wrap}
@@ -78,6 +79,7 @@ tr:hover td{background:#FAFAF6}
 .deal-card:hover{box-shadow:0 2px 8px rgba(20,37,28,.12)}
 .deal-card.flag{border-left-color:var(--amber)}
 .deal-card.overdue{border-left-color:var(--red)}
+.deal-card.stale14{border-left-color:#B3402E;box-shadow:0 0 0 1px #B3402E22}
 .deal-name{font-weight:700;font-size:13px}
 .deal-meta{font-size:11px;color:var(--mut);margin:2px 0}
 .gates{display:flex;gap:4px;margin-top:6px;align-items:center}
@@ -159,6 +161,8 @@ const SCOPES=['Full build (prefab + equipment)','Prefab building only','Equipmen
 const FARM_TYPES=['Broiler','Breeder','Layer','Multi-tier Cage','Other'];
 const SOURCES=['Referral','Integrator program','Walk-in / Inbound','Agent / Broker','Self-generated'];
 const DOC_TYPES=['Quotation','Official Receipt (OR)','Pro-forma Invoice','Site Inspection Report','Contract / PO','Letter of Intent','Bank Documents','Permit','Other'];
+const LOST_REASONS=['Price too high','Client timeline changed','Lost to competition (Retech/others)','No budget approved','No decision made','Client unqualified','Project cancelled','Other'];
+const LEAD_SOURCES_EXT=['Inbound Inquiry','SA Self-Generated','Client Referral','Existing Client / Upsell'];
 const QUOTE_STATUS=['Draft','Pending engineering review','Engineering approved','Sent to client','Revised','Final / signed'];
 const TASK_TYPES=['Call','Site visit','Follow-up email','Send brochure','Send quotation','Collect PDC','Collect DP','Engineering coordination','Permit follow-up','Client meeting','Other'];
 const MILESTONES=[
@@ -194,7 +198,7 @@ let SESSION=null,PROFILE=null,TAB='dash',PIPE_VIEW='ss';
 let DEALS=[],USERS=[],TASKS=[],TRAVEL=[],APPTS=[],PLAYBOOK=[],RULEBOOK=[],QUOTE_REQS=[];
 let MODAL=null,MODAL_TAB='Profile';
 let CAL_MONTH=new Date(new Date().getFullYear(),new Date().getMonth(),1),CAL_FILTER='',CAL_DAY=null;
-let PIPE_SEARCH='',PIPE_SP='',PIPE_STAGE='',PIPE_SCOPE='';
+let PIPE_SEARCH='',PIPE_SP='',PIPE_STAGE='',PIPE_SCOPE='',PIPE_SOURCE='',PIPE_SHOW_NURTURE=false;
 let KPI_PERIOD='quarter',KPI_VIEW='sa';
 let AI_TOOL='coach',RP_MSGS=[],RP_SCEN='';
 let API_KEY='';
@@ -433,18 +437,20 @@ function buildDash(){
 function buildPipe(){
   const role=PROFILE.role;
   const allOpen=DEALS.filter(d=>d.status==='open');
-  const allClosed=DEALS.filter(d=>d.status!=='open');
+  const allNurture=DEALS.filter(d=>d.status==='nurture');
+  const allClosed=DEALS.filter(d=>d.status==='lost'||d.status==='won');
   function filt(ds){
     return ds.filter(d=>{
       if(PIPE_SEARCH){const q=PIPE_SEARCH.toLowerCase();if(![d.client,d.farm,d.location].some(f=>f?.toLowerCase().includes(q)))return false;}
       if(PIPE_SP){if(PIPE_VIEW==='ss'&&d.ss_agent_id!==PIPE_SP)return false;if(PIPE_VIEW==='sa'&&d.sa_agent_id!==PIPE_SP)return false;}
       if(PIPE_SCOPE&&d.scope!==PIPE_SCOPE)return false;
+      if(PIPE_SOURCE&&d.lead_source!==PIPE_SOURCE)return false;
       if(PIPE_STAGE){if(PIPE_VIEW==='ss'&&(d.substage||'untouched')!==PIPE_STAGE)return false;if(PIPE_VIEW==='sa'&&d.stage!==PIPE_STAGE)return false;}
       return true;
     });
   }
   const agentOpts='<option value="">All agents</option>'+USERS.map(u=>`<option value="${u.id}" ${PIPE_SP===u.id?'selected':''}>${esc(u.name)}</option>`).join('');
-  const clearBtn=(PIPE_SEARCH||PIPE_SP||PIPE_SCOPE||PIPE_STAGE)?`<button class="btn sec sm" onclick="PIPE_SEARCH='';PIPE_SP='';PIPE_SCOPE='';PIPE_STAGE='';render()">Clear</button>`:'';
+  const clearBtn=(PIPE_SEARCH||PIPE_SP||PIPE_SCOPE||PIPE_STAGE||PIPE_SOURCE)?`<button class="btn sec sm" onclick="PIPE_SEARCH='';PIPE_SP='';PIPE_SCOPE='';PIPE_STAGE='';PIPE_SOURCE='';render()">Clear</button>`:'';
   const toggle=`<div style="background:#EDEDE5;border-radius:8px;padding:3px;display:flex;gap:2px">
     ${role!=='Sales Agent'?`<button class="btn sm ${PIPE_VIEW==='ss'?'':'sec'}" style="${PIPE_VIEW==='ss'?'':'background:transparent;border:none'}" onclick="PIPE_VIEW='ss';PIPE_STAGE='';render()">Lead Gen</button>`:''}
     ${role!=='Lead Gen'?`<button class="btn sm ${PIPE_VIEW==='sa'?'':'sec'}" style="${PIPE_VIEW==='sa'?'':'background:transparent;border:none'}" onclick="PIPE_VIEW='sa';PIPE_STAGE='';render()">Sales Agents</button>`:''}
@@ -496,11 +502,20 @@ function buildPipe(){
       const days=dealDays(d),flag=SA_FLAGS[st]||14,g=d.gates||{};
       const cls=days>flag?'overdue':days>flag*.7?'flag':'';
       const dc=days>flag?'r':days>flag*.7?'a':'';
-      return`<div class="deal-card ${cls}" onclick="openDeal('${d.id}')">
+      // 14-day activity stale: use updated_at as proxy (every note/save touches it)
+      const lastTouch=d.updated_at?.slice(0,10)||d.created_at?.slice(0,10)||today();
+      const actDays=daysSince(lastTouch);
+      const isStale14=actDays>=14;
+      const quoteRev=d.quote_rev||0;
+      const quoteBadge=quoteRev>0?`<span style="font-size:10px;background:#EFF6FF;color:#1D4ED8;border-radius:10px;padding:1px 6px;font-weight:700">Rev ${quoteRev}</span>`:'';
+      const leadSrcBadge=d.lead_source?`<span style="font-size:10px;background:#F3E8FF;color:#6B21A8;border-radius:10px;padding:1px 6px;font-weight:600">${esc(d.lead_source)}</span>`:'';
+      return`<div class="deal-card ${isStale14?'stale14':cls}" onclick="openDeal('${d.id}')">
         <span class="dayschip ${dc}">${days}d ${dealDayLabel(d)}</span>
+        ${isStale14?`<span title="No activity in 14+ days" style="float:right;font-size:11px;background:var(--red-lt);color:var(--red);border-radius:10px;padding:1px 5px;font-weight:700;margin-left:4px">🔴 ${actDays}d idle</span>`:''}
         <div class="deal-name">${esc(d.client)}</div>
         <div class="deal-meta">${esc(d.farm)} · ${esc(d.location)}</div>
         <div class="deal-meta">${peso(d.value)} · ${d.num_bldgs||1}x ${esc(d.house_model||d.farm_type||'')} · ${esc(saAgent(d))}</div>
+        ${(quoteBadge||leadSrcBadge)?`<div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap">${quoteBadge}${leadSrcBadge}</div>`:''}
         <div class="gates">
           <span class="gate ${g.land?'ok':''}" title="Land"></span><span class="gate ${g.money?'ok':''}" title="Money"></span>
           <span class="gate ${g.market?'ok':''}" title="Market"></span><span class="gate ${g.timeline?'ok':''}" title="Timeline"></span>
@@ -522,20 +537,38 @@ function buildPipe(){
     <td>${d.status==='won'?'<span class="chip g">WON</span>':'<span class="chip r">LOST</span>'}</td>
     <td>${peso(d.value)}</td><td>${esc(saAgent(d))}</td>
     <td class="sub">${esc(d.status==='won'?'Won '+(d.won_date||''):d.lost_reason)}</td></tr>`).join('');
+  // Nurture queue section
+  const nurtureDeals=filt(allNurture.filter(d=>SA_STAGES.includes(d.stage)||!d.stage||d.stage==='Lead'||true));
+  const nurtureSection=nurtureDeals.length?`<div class="card" style="margin-top:16px;border-left:4px solid #6B21A8">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div><h3 style="font-size:14px;margin:0">🌱 Nurture queue <span class="chip p">${nurtureDeals.length}</span></h3>
+      <div class="sub" style="margin-top:2px">Closed-lost but not dead — scheduled check-ins keep these warm.</div></div>
+    </div>
+    <table><thead><tr><th>Client</th><th>Farm</th><th>Value</th><th>Agent</th><th>Loss reason</th><th>Check-in</th><th></th></tr></thead><tbody>
+    ${nurtureDeals.map(d=>{
+      const daysToCheckin=d.nurture_checkin?Math.ceil((new Date(d.nurture_checkin)-Date.now())/86400000):null;
+      const checkinBadge=daysToCheckin!==null?(daysToCheckin<0?`<span class="chip r">overdue ${Math.abs(daysToCheckin)}d</span>`:daysToCheckin<=7?`<span class="chip a">in ${daysToCheckin}d</span>`:`<span class="sub">${d.nurture_checkin}</span>`):'<span class="sub">—</span>';
+      return`<tr onclick="openDeal('${d.id}')" style="cursor:pointer"><td><b>${esc(d.client)}</b></td><td class="sub">${esc(d.farm)}</td><td>${peso(d.value)}</td><td class="sub">${esc(saAgent(d))}</td><td class="sub" style="max-width:200px">${esc(d.lost_reason||'')}</td><td>${checkinBadge}</td>
+      <td><button class="btn sm" style="background:var(--green)" onclick="event.stopPropagation();reopenDeal('${d.id}')">Re-open</button></td></tr>`;
+    }).join('')}
+    </tbody></table></div>`:'';
+
   return hdr+`<div class="filterbar">
     <input id="pipe-search" placeholder="Search…" value="${esc(PIPE_SEARCH)}" oninput="PIPE_SEARCH=this.value;render()" style="min-width:180px;width:auto">
     <select onchange="PIPE_SP=this.value;render()" style="width:auto">${agentOpts}</select>
     <select onchange="PIPE_STAGE=this.value;render()" style="width:auto">${stgOpts}</select>
     <select onchange="PIPE_SCOPE=this.value;render()" style="width:auto"><option value="">All scopes</option>${SCOPES.map(s=>`<option ${PIPE_SCOPE===s?'selected':''}>${s}</option>`).join('')}</select>
+    <select onchange="PIPE_SOURCE=this.value;render()" style="width:auto"><option value="">All lead sources</option>${LEAD_SOURCES_EXT.map(s=>`<option ${PIPE_SOURCE===s?'selected':''}>${s}</option>`).join('')}</select>
     ${clearBtn}<span class="sub" style="margin-left:auto">${saDeals.length} shown</span>
   </div>
   <div class="sub" style="margin-bottom:10px">KPI clock starts from handoff date. Bidding/Committed flag on idle days.</div>
   <div class="kanban-sa">${cols}</div>
-  ${closedRows?`<div class="card" style="margin-top:16px"><h3 style="font-size:14px;margin-bottom:10px">Closed deals</h3><table><thead><tr><th>Client</th><th>Result</th><th>Value</th><th>Agent</th><th>Note</th></tr></thead><tbody>${closedRows}</tbody></table></div>`:''}`;
+  ${nurtureSection}
+  ${closedRows?`<div class="card" style="margin-top:16px"><h3 style="font-size:14px;margin-bottom:10px">Closed deals</h3><table><thead><tr><th>Client</th><th>Result</th><th>Value</th><th>Agent</th><th>Reason / note</th></tr></thead><tbody>${closedRows}</tbody></table></div>`:''}`;
 }
 
 // ── DEAL MODAL ──
-let DEAL_DATA={activities:[],reports:[],docs:[],quoteReqs:[]};
+let DEAL_DATA={activities:[],reports:[],docs:[],quoteReqs:[],collection_tranches:[]};
 
 async function openDeal(id){
   const d=id?DEALS.find(x=>x.id===id):null;
@@ -579,6 +612,7 @@ function buildDealModal(){
       <div><label>Lead Gen agent</label><select id="f_ssag">${ssOpts}</select></div>
       <div><label>Sales Agent</label><select id="f_sp">${spOpts}</select></div>
       <div><label>Source</label><select id="f_src">${SOURCES.map(s=>`<option ${d?.source===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div><label>Lead source (funnel)</label><select id="f_lead_src"><option value="">— select —</option>${LEAD_SOURCES_EXT.map(s=>`<option ${d?.lead_source===s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div><label>Scope</label><select id="f_scope">${SCOPES.map(s=>`<option ${d?.scope===s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div><label>Farm type</label><select id="f_ft">${FARM_TYPES.map(s=>`<option ${d?.farm_type===s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div><label>House model</label><input id="f_hm" value="${esc(d?.house_model||'')}" placeholder="CCS3, CCS4…"></div>
@@ -618,7 +652,8 @@ function buildDealModal(){
         <div><b>Meeting</b><br>${esc(d.handoff.meeting_date)}</div><div><b>Assigned to</b><br>${esc(userName(d.handoff.sa_agent_id))}</div>
         <div class="full"><b>Profile collected</b><br>${esc(d.handoff.client_info)}</div>
       </div></div>`:''}
-    ${d?.stage==='Lead'&&(d?.substage||'untouched')==='profile_done'&&!d?.handoff?`<div class="notice" style="margin-top:14px"><b>Profile collected — ready for handoff.</b> <button class="btn sm" onclick="showHandoff()">Do handoff →</button></div>`:''}`;
+    ${d?.stage==='Lead'&&(d?.substage||'untouched')==='profile_done'&&!d?.handoff?`<div class="notice" style="margin-top:14px"><b>Profile collected — ready for handoff.</b> <button class="btn sm" onclick="showHandoff()">Do handoff →</button></div>`:''}
+    ${(d?.stage==='Closed Sale'||d?.status==='won')?buildCollectionTranches(d):''}`;
   }
 
   if(MODAL_TAB==='Milestones'&&d){
@@ -636,7 +671,22 @@ function buildDealModal(){
   }
 
   if(MODAL_TAB==='Notes'&&d){
-    content=`<div class="row" style="margin-bottom:14px">
+    // Discovery Call Template: show when substage=engaged and no discovery note yet
+    const hasDiscovery=DEAL_DATA.activities.some(a=>/\bPain\b.*\bTrigger\b/i.test(a.note)||a.type==='Discovery');
+    const showDiscTpl=d.substage==='engaged'&&!hasDiscovery;
+    const discTpl=showDiscTpl?`<details style="margin-bottom:12px;border:1px solid #D98E1B33;border-radius:8px;background:#FFFBEB" open>
+      <summary style="padding:8px 12px;font-weight:600;font-size:13px;cursor:pointer;color:#92400E">📋 Discovery Call Template — fill and Add Note</summary>
+      <div style="padding:10px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+        <label style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;color:#92400E">Pain</span><textarea id="disc_pain" rows="2" placeholder="What operational pain are they feeling?" style="font-size:12px;resize:vertical"></textarea></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;color:#92400E">Trigger</span><textarea id="disc_trigger" rows="2" placeholder="What event forced action now?" style="font-size:12px;resize:vertical"></textarea></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;color:#92400E">Timeline</span><input id="disc_timeline" placeholder="When do they need this done?" style="font-size:12px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;color:#92400E">Budget signal</span><input id="disc_budget" placeholder="Any number mentioned? Funding?" style="font-size:12px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;color:#92400E">ROI angle</span><input id="disc_roi" placeholder="Mortality? FCR? Density? Energy?" style="font-size:12px"></label>
+        <label style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;color:#92400E">Next step agreed</span><input id="disc_next" placeholder="What did both sides commit to?" style="font-size:12px"></label>
+      </div>
+      <div style="padding:4px 12px 10px"><button class="btn sm" onclick="addDiscoveryNote('${d.id}')">📋 Save Discovery Note</button></div>
+    </details>`:'';
+    content=`${discTpl}<div class="row" style="margin-bottom:14px">
       <input id="new_note" placeholder="Note — what was said, decided, or flagged…" style="flex:1" onkeydown="if(event.key==='Enter')addNote('${d.id}')">
       <input id="note_by" value="${esc(PROFILE.name)}" style="width:140px">
       <button class="btn sm" onclick="addNote('${d.id}')">Add</button></div>
@@ -657,6 +707,7 @@ function buildDealModal(){
           <div style="font-weight:600">${esc(q.house_model||d.house_model||'')} · ${q.num_bldgs||d.num_bldgs||1} building${(q.num_bldgs||1)>1?'s':''}</div>
           <div class="sub">${esc(q.scope||d.scope||'')}${q.special_notes?' · '+esc(q.special_notes):''}</div>
           <div class="sub">Requested by ${esc(q.crm_users?.name||'—')} · ${q.created_at?.slice(0,10)}</div>
+          ${q.discount_pct?`<div class="sub" style="color:var(--red)">Discount: ${q.discount_pct}%${q.approved_by?' · Approved by '+esc(q.approved_by):' <b style="color:var(--red)">⚠ Pending approval</b>'}</div>`:''}
         </div>
         ${statusChip}
       </div>`;
@@ -844,6 +895,67 @@ async function autoCreateTasks(dealId, deal, assigneeId, nextAction, nextActionD
   await Promise.all(promises);
 }
 
+// ── COLLECTION TRANCHES ──
+const TRANCHES=[
+  {key:'dp',label:'Downpayment'},
+  {key:'pb1',label:'Progress Billing 1'},
+  {key:'pb2',label:'Progress Billing 2'},
+  {key:'final',label:'Final Balance'}
+];
+function buildCollectionTranches(d){
+  const tr=d.collection_tranches||[];
+  const rows=TRANCHES.map((t,i)=>{
+    const existing=tr.find(x=>x.key===t.key)||{};
+    const collected=existing.collected||false;
+    return`<div style="display:grid;grid-template-columns:140px 1fr 120px 110px 1fr;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px">
+      <b style="color:${collected?'var(--green)':'inherit'}">${t.label}</b>
+      <input id="tr_amt_${t.key}" type="number" placeholder="Amount (PHP)" value="${existing.amount||''}" style="font-size:12px">
+      <input id="tr_due_${t.key}" type="date" value="${existing.due_date||''}" style="font-size:12px">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;margin:0;cursor:pointer">
+        <input type="checkbox" id="tr_col_${t.key}" ${collected?'checked':''} style="width:auto" onchange="updateTranche('${d.id}','${t.key}',this.checked)">
+        Collected
+      </label>
+      <input id="tr_cdate_${t.key}" type="date" value="${existing.collected_date||''}" placeholder="Date collected" style="font-size:12px;${collected?'':'opacity:0.4'}">
+    </div>`;
+  }).join('');
+  const totalAmt=tr.reduce((s,t)=>s+(+t.amount||0),0);
+  const totalCollected=tr.filter(t=>t.collected).reduce((s,t)=>s+(+t.amount||0),0);
+  const outstanding=totalAmt-totalCollected;
+  return`<div style="margin-top:16px;border-top:2px solid var(--green);padding-top:12px">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <h4 style="font-size:13px;margin:0">💰 Collection Tranches</h4>
+      <div class="sub">Total: ${peso(totalAmt)} · Collected: <span style="color:var(--green);font-weight:600">${peso(totalCollected)}</span> · Outstanding: <span style="color:${outstanding>0?'var(--red)':'var(--green)'};font-weight:600">${peso(outstanding)}</span></div>
+    </div>
+    <div style="min-width:600px;overflow-x:auto">
+      <div style="display:grid;grid-template-columns:140px 1fr 120px 110px 1fr;gap:8px;padding:0 0 5px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--steel);border-bottom:2px solid var(--line)">
+        <span>Tranche</span><span>Amount (PHP)</span><span>Due Date</span><span>Status</span><span>Date Collected</span>
+      </div>
+      ${rows}
+    </div>
+    <button class="btn sm" style="margin-top:10px" onclick="saveCollectionTranches('${d.id}')">Save tranches</button>
+  </div>`;
+}
+async function saveCollectionTranches(dealId){
+  const g=id=>el(id)?.value?.trim()||'';
+  const tranches=TRANCHES.map(t=>({
+    key:t.key,
+    label:t.label,
+    amount:parseFloat(g(`tr_amt_${t.key}`))||0,
+    due_date:g(`tr_due_${t.key}`)||null,
+    collected:el(`tr_col_${t.key}`)?.checked||false,
+    collected_date:g(`tr_cdate_${t.key}`)||null
+  }));
+  await SB.from('crm_deals').update({collection_tranches:tranches}).eq('id',dealId);
+  await loadAll();
+  const updated=DEALS.find(x=>x.id===dealId);if(updated)MODAL.deal=updated;
+  render();
+}
+async function updateTranche(dealId,key,checked){
+  // Toggle collected status and show/hide date field
+  const dateEl=el(`tr_cdate_${key}`);
+  if(dateEl){dateEl.style.opacity=checked?'1':'0.4';if(checked&&!dateEl.value)dateEl.value=today();}
+}
+
 async function saveDeal(id){
   const v=k=>el(k)?.value;
   if(!v('f_client')?.trim()){alert('Client name is required.');return;}
@@ -863,7 +975,7 @@ async function saveDeal(id){
     ...(id?{id}:{}),
     client:v('f_client'),farm:v('f_farm'),location:v('f_loc'),value:+v('f_val')||0,
     ss_agent_id:v('f_ssag')||null,sa_agent_id:assigneeId,
-    source:v('f_src'),scope:v('f_scope'),farm_type:v('f_ft'),house_model:v('f_hm'),num_bldgs:+v('f_nb')||1,
+    source:v('f_src'),lead_source:v('f_lead_src')||null,scope:v('f_scope'),farm_type:v('f_ft'),house_model:v('f_hm'),num_bldgs:+v('f_nb')||1,
     stage:resolvedStage,substage:v('f_ss')||'untouched',gates,
     next_action:nextAction,next_action_date:nextActionDate,
     target_date:v('f_td')||null,travel_budget:+v('f_tb')||0,
@@ -882,9 +994,72 @@ async function markWon(id){
   await db.upsertDeal({id,status:'won',won_date:today(),stage:'Closed Sale',updated_at:new Date().toISOString()});
   await loadAll();closeModal();
 }
-async function markLost(id){
-  const r=prompt('Loss reason:');if(!r)return;
-  await db.upsertDeal({id,status:'lost',lost_reason:r,updated_at:new Date().toISOString()});
+function markLost(id){
+  // Show inline modal for loss reason + nurture option
+  const d=DEALS.find(x=>x.id===id)||MODAL?.deal;
+  const reasonOpts=LOST_REASONS.map(r=>`<option>${r}</option>`).join('');
+  const panel=document.createElement('div');
+  panel.id='lost-panel';
+  panel.style.cssText='position:fixed;inset:0;background:rgba(20,37,28,.6);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
+  panel.innerHTML=`<div style="background:#fff;border-radius:12px;padding:24px;max-width:420px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.3)">
+    <h3 style="font-size:16px;font-weight:700;margin-bottom:4px">Close deal — ${esc(d?.client||'')}</h3>
+    <div class="sub" style="margin-bottom:14px">Log why this deal is closing and whether to keep in nurture queue.</div>
+    <div style="margin-bottom:12px">
+      <label>Loss reason</label>
+      <select id="lost_reason_sel" style="width:100%">${reasonOpts}</select>
+    </div>
+    <div style="margin-bottom:14px">
+      <label>Additional notes (optional)</label>
+      <input id="lost_note" placeholder="e.g. client chose Retech due to 3-month faster delivery" style="width:100%">
+    </div>
+    <div style="margin-bottom:16px;background:#F3E8FF;border-radius:8px;padding:12px">
+      <div style="font-weight:700;font-size:13px;color:#6B21A8;margin-bottom:6px">Nurture queue?</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;margin:0;cursor:pointer;color:var(--ink)">
+          <input type="radio" name="nurture_opt" value="nurture" id="opt_nurture" style="width:auto"> Keep in nurture — schedule check-in
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;margin:0;cursor:pointer;color:var(--ink)">
+          <input type="radio" name="nurture_opt" value="dead" id="opt_dead" checked style="width:auto"> Close as dead
+        </label>
+      </div>
+      <div id="nurture_date_row" style="margin-top:10px;display:none">
+        <label>Check-in date</label>
+        <input type="date" id="nurture_checkin" value="${new Date(Date.now()+30*86400000).toISOString().slice(0,10)}" style="width:100%">
+      </div>
+    </div>
+    <div class="row" style="gap:8px">
+      <button class="btn warn" onclick="confirmMarkLost('${id}')">Confirm close</button>
+      <button class="btn sec" onclick="document.getElementById('lost-panel').remove()">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(panel);
+  // Toggle nurture date visibility
+  panel.querySelectorAll('input[name="nurture_opt"]').forEach(r=>r.addEventListener('change',()=>{
+    document.getElementById('nurture_date_row').style.display=document.getElementById('opt_nurture').checked?'block':'none';
+  }));
+}
+
+async function reopenDeal(id){
+  if(!confirm('Re-open this deal as active (status → open)?'))return;
+  await db.upsertDeal({id,status:'open',updated_at:new Date().toISOString()});
+  await db.addActivity({deal_id:id,type:'Note',note:`Re-opened from nurture queue by ${PROFILE.name}`,by_name:PROFILE.name});
+  await loadAll();render();
+}
+
+async function confirmMarkLost(id){
+  const reason=document.getElementById('lost_reason_sel')?.value||'Other';
+  const note=document.getElementById('lost_note')?.value?.trim()||'';
+  const isNurture=document.getElementById('opt_nurture')?.checked;
+  const checkinDate=document.getElementById('nurture_checkin')?.value||'';
+  const lostReason=note?`${reason} — ${note}`:reason;
+  if(isNurture){
+    await db.upsertDeal({id,status:'nurture',lost_reason:lostReason,nurture_checkin:checkinDate||null,updated_at:new Date().toISOString()});
+    await db.addActivity({deal_id:id,type:'Note',note:`Moved to Nurture queue. Reason: ${lostReason}. Check-in scheduled: ${checkinDate||'TBD'}`,by_name:PROFILE.name});
+  }else{
+    await db.upsertDeal({id,status:'lost',lost_reason:lostReason,updated_at:new Date().toISOString()});
+    await db.addActivity({deal_id:id,type:'Note',note:`Closed lost. Reason: ${lostReason}`,by_name:PROFILE.name});
+  }
+  document.getElementById('lost-panel')?.remove();
   await loadAll();closeModal();
 }
 async function toggleMs(dealId,key,on){
@@ -905,6 +1080,14 @@ async function addNote(dealId){
   const note=el('new_note')?.value?.trim(),by=el('note_by')?.value||PROFILE.name;
   if(!note)return;
   await db.addActivity({deal_id:dealId,type:'Note',note,by_name:by});
+  const {data:a}=await db.activities(dealId);DEAL_DATA.activities=a||[];render();
+}
+async function addDiscoveryNote(dealId){
+  const g=id=>el(id)?.value?.trim()||'—';
+  const pain=g('disc_pain'),trigger=g('disc_trigger'),timeline=g('disc_timeline'),
+        budget=g('disc_budget'),roi=g('disc_roi'),next=g('disc_next');
+  const note=`Discovery Call\nPain: ${pain}\nTrigger: ${trigger}\nTimeline: ${timeline}\nBudget signal: ${budget}\nROI angle: ${roi}\nNext step agreed: ${next}`;
+  await db.addActivity({deal_id:dealId,type:'Discovery',note,by_name:PROFILE.name});
   const {data:a}=await db.activities(dealId);DEAL_DATA.activities=a||[];render();
 }
 async function addDocLink(dealId){
@@ -1423,11 +1606,10 @@ function buildKPI(){
     const avgVelocity=allMoves.length>1?
       Math.round(allMoves.reduce((a,d,i,arr)=>i===0?a:a+(new Date(d)-new Date(arr[i-1]))/(1000*60*60*24),0)/(allMoves.length-1)):null;
 
-    // Stale deals — open deals with no stage move in 30+ days
+    // Stale deals — open deals with no activity (updated_at) in 14+ days
     const stale=openDeals.filter(d=>{
-      const hist=d.stage_history||[];
-      const lastMove=hist.length?hist[hist.length-1].date:d.created_at?.slice(0,10)||'';
-      return lastMove&&(new Date(today())-new Date(lastMove))/(1000*60*60*24)>=30;
+      const lastTouch=d.updated_at?.slice(0,10)||d.created_at?.slice(0,10)||'';
+      return lastTouch&&daysSince(lastTouch)>=14;
     }).length;
 
     // Quotation-to-close — % of deals that reached Proposal stage and were won
@@ -1514,8 +1696,8 @@ function buildKPI(){
           'Win rate','Won ÷ total closed — all time',v.winRate||0,50)}
         ${Score(v.avgVelocity!==null?`${v.avgVelocity} days avg between stages`:'No stage moves this period',
           'Stage velocity','Avg days between each stage advance this period')}
-        ${Score(v.stale>0?`⚠ ${v.stale} deal${v.stale>1?'s':''} stale (30+ days)`:'All deals moving',
-          'Stale deals','Open deals with no stage move in 30+ days')}
+        ${Score(v.stale>0?`⚠ ${v.stale} deal${v.stale>1?'s':''} stale (14+ days idle)`:'All deals moving',
+          'Stale deals','Open deals with no activity in 14+ days')}
         ${Score(v.qtcRate!==null?`${v.qtcRate}% (${v.gotQuote} reached Proposal)`:'No proposals yet',
           'Quotation-to-close rate','% of deals that reached Proposal stage and were won',v.qtcRate||0,30)}
       `)}
@@ -1577,6 +1759,8 @@ function showQuoteReqForm(dealId){
       <div><label>Deadline needed by</label><input type="date" id="qrf_deadline"></div>
       <div><label>Scope</label><select id="qrf_scope">${SCOPES.map(s=>`<option ${(d?.scope||'')=== s?'selected':''}>${s}</option>`).join('')}</select></div>
       <div><label>Assign to</label><select id="qrf_est">${estOpts}</select></div>
+      <div><label>Max discount allowed (%)</label><input type="number" id="qrf_disc" min="0" max="30" step="0.5" placeholder="e.g. 5" style="font-size:13px"></div>
+      <div><label>Discount approved by</label><input id="qrf_appr" placeholder="Sales Head name (if any)" style="font-size:13px"></div>
       <div class="full"><label>Special requirements / site notes</label><textarea id="qrf_notes" rows="3" placeholder="Access issues, special dimensions, client requests, bank requirements…"></textarea></div>
     </div>
     <div class="row" style="margin-top:8px;gap:8px">
@@ -1597,6 +1781,8 @@ async function submitQuoteReq(dealId){
     num_bldgs:+v('qrf_nb')||1,
     special_notes:v('qrf_notes'),
     deadline:v('qrf_deadline')||null,
+    discount_pct:v('qrf_disc')?parseFloat(v('qrf_disc')):null,
+    approved_by:v('qrf_appr')||null,
     status:'pending'
   };
   await db.addQuoteReq(payload);
@@ -1756,8 +1942,11 @@ async function uploadQReqPDF(file,reqId,dealId){
   // Mark request as ready and link the doc
   await db.updateQuoteReq(reqId,{status:'quotation_submitted',doc_id:doc?.id||null});
   // Notify SA via activity log
-  const deal=DEALS.find(d=>d.id===dealId);
   await db.addActivity({deal_id:dealId,type:'Quotation ready',note:`Quotation "${file.name}" uploaded by ${PROFILE.name} — ready for client.`,by_name:PROFILE.name});
+  // Increment quote_rev counter on the deal
+  const deal=DEALS.find(d=>d.id===dealId);
+  const newRev=(deal?.quote_rev||0)+1;
+  await SB.from('crm_deals').update({quote_rev:newRev}).eq('id',dealId);
   if(prog)prog.innerHTML='';
   await loadAll();render();
 }
