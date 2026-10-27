@@ -147,11 +147,10 @@ const sb=supabase.createClient(SB_URL,SB_KEY);
 
 // ── constants ──
 const SS_SUB=[
-  {key:'untouched',label:'Untouched',color:'#9DB5A8',exit:'First contact made'},
-  {key:'intro_sent',label:'Intro sent',color:'#D98E1B',exit:'Brand + brochure sent'},
-  {key:'engaged',label:'Engaged',color:'#2E5FB3',exit:'Client responded'},
-  {key:'meeting_booked',label:'Meeting booked',color:'#7B3FA0',exit:'Call scheduled'},
-  {key:'profile_done',label:'Profile collected',color:'#1E6B45',exit:'Ready for handoff'},
+  {key:'untouched',label:'Inquiry received',color:'#9DB5A8',exit:'New lead in'},
+  {key:'intro_sent',label:'Call booked',color:'#D98E1B',exit:'Discovery call scheduled'},
+  {key:'engaged',label:'Call taken',color:'#2E5FB3',exit:'Profiling in progress'},
+  {key:'profile_done',label:'Ready for handoff',color:'#1E6B45',exit:'4 gates assessed'},
 ];
 const SA_STAGES=['Evaluation','Qualified','Site Inspection','Proposal','Bidding / Negotiation','Committed','Closed Sale'];
 const SA_FLAGS={'Evaluation':7,'Qualified':14,'Site Inspection':21,'Proposal':30,'Bidding / Negotiation':30,'Committed':21,'Closed Sale':7};
@@ -1444,8 +1443,8 @@ function buildKPI(){
     // Calls / touchpoints = call tasks done by this user in period (SS agents use tasks too)
     const callsDone=TASKS.filter(t=>t.assignee_id===u.id&&t.type==='Call'&&t.status==='done'&&(t.due||'')>=cutoff).length;
 
-    // Meetings booked = deals that reached meeting_booked or profile_done substage in period
-    const meetings=mine.filter(d=>['meeting_booked','profile_done'].includes(d.substage||'')&&
+    // Calls taken = deals that reached call taken or ready for handoff substage in period
+    const meetings=mine.filter(d=>['engaged','profile_done'].includes(d.substage||'')&&
       (d.stage_history||[])[0]?.date>=cutoff).length;
 
     // Profiles collected and handed off
